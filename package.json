@@ -1,0 +1,36 @@
+{
+  "name": "proyecto-gestion-gastos",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.89.0",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.24.0",
+    "lucide-react": "^0.562.0",
+    "next": "^14",
+    "react": "^18",
+    "react-dom": "^18",
+    "recharts": "^3.6.0",
+    "tailwind-merge": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "dotenv": "^17.2.3",
+    "eslint": "^8",
+    "eslint-config-next": "^14",
+    "postcss": "^8",
+    "supabase": "^2.70.5",
+    "tailwindcss": "^3.3.0",
+    "typescript": "^5"
+  }
+}
