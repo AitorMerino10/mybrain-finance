@@ -961,6 +961,10 @@ export default function AnalyticsPageClient({
                             wrapperStyle={{ zIndex: 9999 }}
                             contentStyle={{ backgroundColor: '#ffffff', border: '2px solid #d1d5db', borderRadius: '0.5rem', padding: '12px', opacity: 1, zIndex: 9999 }}
                                   content={({ active, payload }) => {
+                                    // Deshabilitar tooltip en dispositivos táctiles para evitar duplicación
+                                    if (typeof window !== 'undefined' && 'ontouchstart' in window) {
+                                      return null
+                                    }
                                     if (active && payload && payload.length) {
                                 const data = payload[0].payload
                                       return (
@@ -1052,6 +1056,10 @@ export default function AnalyticsPageClient({
                                   </Pie>
                                   <Tooltip 
                                     content={({ active, payload }) => {
+                                      // Deshabilitar tooltip en dispositivos táctiles para evitar duplicación
+                                      if (typeof window !== 'undefined' && 'ontouchstart' in window) {
+                                        return null
+                                      }
                                       if (active && payload && payload.length) {
                               const data = payload[0].payload
                                         return (
@@ -1145,19 +1153,36 @@ export default function AnalyticsPageClient({
 
         {/* Tooltip móvil para pie charts */}
         {activeTooltip && (
-          <div
-            className="fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-3 pointer-events-none"
-            style={{
-              left: `${activeTooltip.x}px`,
-              top: `${activeTooltip.y}px`,
-              transform: 'translateX(-50%)',
-              opacity: 1,
-            }}
-          >
-            <p className="text-sm font-semibold mb-2">{activeTooltip.data.name}</p>
-            <p className="text-base font-bold mb-1">{formatCurrency(activeTooltip.data.value)}</p>
-            <p className="text-xs text-gray-500">{activeTooltip.data.percentage.toFixed(1)}%</p>
-                          </div>
+          <>
+            {/* Overlay para cerrar al tocar fuera */}
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setActiveTooltip(null)}
+              onTouchStart={() => setActiveTooltip(null)}
+            />
+            {/* Tooltip */}
+            <div
+              className="fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-3"
+              style={{
+                left: `${activeTooltip.x}px`,
+                top: `${activeTooltip.y}px`,
+                transform: 'translateX(-50%)',
+                opacity: 1,
+                minWidth: '140px',
+              }}
+            >
+              <button
+                onClick={() => setActiveTooltip(null)}
+                className="absolute top-1 right-1 text-gray-400 hover:text-gray-600 active:text-gray-800 text-xl leading-none w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
+                aria-label="Cerrar"
+              >
+                ×
+              </button>
+              <p className="text-sm font-semibold mb-2 pr-4">{activeTooltip.data.name}</p>
+              <p className="text-base font-bold mb-1">{formatCurrency(activeTooltip.data.value)}</p>
+              <p className="text-xs text-gray-500">{activeTooltip.data.percentage.toFixed(1)}%</p>
+            </div>
+          </>
         )}
 
       </div>
