@@ -837,6 +837,73 @@ export async function getTransactionsForAnalytics(
 }
 
 /**
+ * Recalcula el ft_amount de una transacción basándose en los usuarios filtrados
+ * Si no hay usuarios filtrados, devuelve el ft_amount original
+ * Si hay usuarios filtrados, suma los ft_amount_user de esos usuarios
+ */
+export function recalculateAmountForUsers(
+  transaction: TransactionWithRelations,
+  filteredUserIds?: string[] | null
+): number {
+  // Si no hay usuarios filtrados, devolver el ft_amount original
+  if (!filteredUserIds || filteredUserIds.length === 0) {
+    // Si no hay usuarios en la transacción, devolver el ft_amount original
+    if (!transaction.users || transaction.users.length === 0) {
+      return transaction.ft_amount || 0
+    }
+    // Si hay usuarios pero no se filtran, sumar todos los ft_amount_user
+    return transaction.users.reduce((sum, u) => sum + (u.ft_amount_user || 0), 0)
+  }
+
+  // Si hay usuarios filtrados, filtrar y sumar sus ft_amount_user
+  if (!transaction.users || transaction.users.length === 0) {
+    return 0
+  }
+
+  const filteredUsers = transaction.users.filter(u => filteredUserIds.includes(u.id_user))
+  if (filteredUsers.length === 0) {
+    return 0
+  }
+
+  return filteredUsers.reduce((sum, u) => sum + (u.ft_amount_user || 0), 0)
+}
+
+/**
+ * Aplica el recálculo de ft_amount a un array de transacciones basándose en usuarios filtrados
+ */
+export function applyUserFilterToTransactions(
+  transactions: TransactionWithRelations[],
+  filteredUserIds?: string[] | null
+): TransactionWithRelations[] {
+  if (!filteredUserIds || filteredUserIds.length === 0) {
+    // Si no hay usuarios filtrados, recalcular sumando todos los ft_amount_user
+    return transactions.map(t => ({
+      ...t,
+      ft_amount: recalculateAmountForUsers(t, null)
+    }))
+  }
+
+  const result = transactions
+    .map(t => {
+      const recalculatedAmount = recalculateAmountForUsers(t, filteredUserIds)
+      // Si el monto recalculado es 0, excluir la transacción
+      if (recalculatedAmount === 0) {
+        return null
+      }
+      const filteredUsers = t.users?.filter(u => filteredUserIds.includes(u.id_user)) || []
+      return {
+        ...t,
+        ft_amount: recalculatedAmount,
+        // Filtrar también los usuarios para que solo aparezcan los filtrados
+        users: filteredUsers
+      }
+    })
+    .filter((t) => t !== null) as TransactionWithRelations[]
+  
+  return result
+}
+
+/**
  * Calcula totales de ingresos, gastos y beneficios
  * OPTIMIZADO: Usa el tipo ya incluido en las transacciones, sin queries adicionales
  */
@@ -1706,10 +1773,11 @@ export function compareMultipleCases(
     }
 
     if (case_.idUsers && case_.idUsers.length > 0) {
-      caseTransactions = caseTransactions.filter(t => {
-        if (!t.users || t.users.length === 0) return false
-        return t.users.some(u => case_.idUsers!.includes(u.id_user))
-      })
+      // Filtrar transacciones por usuarios y recalcular ft_amount basándose en ft_amount_user
+      caseTransactions = applyUserFilterToTransactions(caseTransactions, case_.idUsers)
+    } else {
+      // Si no hay usuarios asignados, sumar todos los ft_amount_user de cada transacción
+      caseTransactions = applyUserFilterToTransactions(caseTransactions, null)
     }
 
     // Calcular métricas para esta casuística

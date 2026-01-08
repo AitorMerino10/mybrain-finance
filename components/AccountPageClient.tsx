@@ -10,6 +10,12 @@ import {
   type UserFamily,
 } from '@/lib/family'
 import {
+  getPendingRequestsForFamily,
+  approveJoinFamilyRequest,
+  rejectFamilyRequest,
+  type FamilyRequest,
+} from '@/lib/admin'
+import {
   getAllCategoriesByFamily,
   getSubcategoriesByCategory,
   type Category,
@@ -44,6 +50,8 @@ export default function AccountPageClient({
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showAddMemberModal, setShowAddMemberModal] = useState(false)
+  const [pendingRequests, setPendingRequests] = useState<FamilyRequest[]>([])
+  const [processingRequest, setProcessingRequest] = useState<string | null>(null)
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -77,6 +85,12 @@ export default function AccountPageClient({
           // Cargar miembros de la familia
           const members = await getFamilyMembers(supabase, family.id_family)
           setFamilyMembers(members)
+
+          // Si es admin, cargar peticiones pendientes
+          if (adminStatus) {
+            const requests = await getPendingRequestsForFamily(supabase, family.id_family)
+            setPendingRequests(requests)
+          }
         }
 
         // Cargar otras familias
@@ -96,6 +110,50 @@ export default function AccountPageClient({
     if (currentFamily) {
       const members = await getFamilyMembers(supabase, currentFamily.id_family)
       setFamilyMembers(members)
+    }
+  }
+
+  const handleApproveRequest = async (request: FamilyRequest) => {
+    if (processingRequest) return
+    
+    setProcessingRequest(request.id_request)
+    try {
+      await approveJoinFamilyRequest(request.id_request)
+      // Recargar datos
+      if (currentFamily) {
+        const members = await getFamilyMembers(supabase, currentFamily.id_family)
+        setFamilyMembers(members)
+        const requests = await getPendingRequestsForFamily(supabase, currentFamily.id_family)
+        setPendingRequests(requests)
+      }
+    } catch (error) {
+      console.error('Error al aprobar petición:', error)
+      alert(error instanceof Error ? error.message : 'Error al aprobar petición')
+    } finally {
+      setProcessingRequest(null)
+    }
+  }
+
+  const handleRejectRequest = async (request: FamilyRequest) => {
+    if (processingRequest) return
+    
+    if (!confirm('¿Estás seguro de rechazar esta petición?')) {
+      return
+    }
+
+    setProcessingRequest(request.id_request)
+    try {
+      await rejectFamilyRequest(request.id_request)
+      // Recargar peticiones
+      if (currentFamily) {
+        const requests = await getPendingRequestsForFamily(supabase, currentFamily.id_family)
+        setPendingRequests(requests)
+      }
+    } catch (error) {
+      console.error('Error al rechazar petición:', error)
+      alert(error instanceof Error ? error.message : 'Error al rechazar petición')
+    } finally {
+      setProcessingRequest(null)
     }
   }
 
@@ -224,10 +282,56 @@ export default function AccountPageClient({
                 )}
               </div>
               {isAdmin && (
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 mb-4">
                   Eres administrador de esta familia
                 </p>
               )}
+
+              {/* Peticiones pendientes (solo para admin) */}
+              {isAdmin && pendingRequests.length > 0 && (
+                <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                  <h3 className="text-sm font-semibold text-yellow-800 mb-3">
+                    Peticiones Pendientes ({pendingRequests.length})
+                  </h3>
+                  <div className="space-y-3">
+                    {pendingRequests.map((request) => (
+                      <div
+                        key={request.id_request}
+                        className="bg-white p-3 rounded-lg border border-yellow-200"
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900">
+                              {request.user?.ds_user || request.user?.ds_email || 'Usuario desconocido'}
+                            </p>
+                            <p className="text-xs text-gray-500">{request.user?.ds_email}</p>
+                            {request.ds_comment && (
+                              <p className="text-xs text-gray-600 mt-1">{request.ds_comment}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => handleApproveRequest(request)}
+                            disabled={processingRequest === request.id_request}
+                            className="flex-1 px-3 py-2 text-xs font-semibold text-white bg-[#90EBD6] rounded-lg hover:bg-[#90EBD6]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation min-h-[36px]"
+                          >
+                            {processingRequest === request.id_request ? 'Procesando...' : 'Aprobar'}
+                          </button>
+                          <button
+                            onClick={() => handleRejectRequest(request)}
+                            disabled={processingRequest === request.id_request}
+                            className="flex-1 px-3 py-2 text-xs font-semibold text-white bg-[#FFB3BA] rounded-lg hover:bg-[#FFB3BA]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation min-h-[36px]"
+                          >
+                            Rechazar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <h3 className="text-lg font-medium text-gray-900">Miembros:</h3>
                 {familyMembers.length === 0 ? (

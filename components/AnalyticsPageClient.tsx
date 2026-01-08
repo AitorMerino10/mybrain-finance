@@ -11,6 +11,7 @@ import {
   calculateMedianMonthlyBenefit,
   compareMultipleCases,
   deleteTransaction,
+  applyUserFilterToTransactions,
   type AnalyticsFilters,
   type MonthlySummary,
   type CategorySummary,
@@ -195,23 +196,33 @@ export default function AnalyticsPageClient({
   // Aplicar filtros en el frontend
   const applyFilters = useCallback(() => {
     let filtered = [...allTransactionsRaw]
+    let filteredForDetails = [...allTransactionsRaw] // Mantener originales para detalle
 
     // Filtros de usuarios
     if (filters.idUsers && filters.idUsers.length > 0) {
-      filtered = filtered.filter(t => {
+      // Para cálculos: recalcular ft_amount basándose en ft_amount_user
+      filtered = applyUserFilterToTransactions(filtered, filters.idUsers)
+      
+      // Para detalle: solo filtrar transacciones que contengan al usuario, pero mantener ft_amount original
+      filteredForDetails = filteredForDetails.filter(t => {
         if (!t.users || t.users.length === 0) return false
         return t.users.some(u => filters.idUsers!.includes(u.id_user))
       })
+    } else {
+      // Si no hay usuarios filtrados, recalcular sumando todos los ft_amount_user
+      filtered = applyUserFilterToTransactions(filtered, null)
     }
 
     // Filtros de categorías
     if (filters.idCategories && filters.idCategories.length > 0) {
       filtered = filtered.filter(t => t.id_category && filters.idCategories!.includes(t.id_category))
+      filteredForDetails = filteredForDetails.filter(t => t.id_category && filters.idCategories!.includes(t.id_category))
     }
 
     // Filtros de subcategorías
     if (filters.idSubcategories && filters.idSubcategories.length > 0) {
       filtered = filtered.filter(t => t.id_subcategory && filters.idSubcategories!.includes(t.id_subcategory))
+      filteredForDetails = filteredForDetails.filter(t => t.id_subcategory && filters.idSubcategories!.includes(t.id_subcategory))
     }
 
     // Filtros de tags
@@ -220,19 +231,26 @@ export default function AnalyticsPageClient({
         if (!t.tag) return false
         return filters.idTags!.includes(t.tag.id_tag)
       })
+      filteredForDetails = filteredForDetails.filter(t => {
+        if (!t.tag) return false
+        return filters.idTags!.includes(t.tag.id_tag)
+      })
     }
 
     // Filtros de meses declarados
     if (filters.monthsDeclared && filters.monthsDeclared.length > 0) {
       filtered = filtered.filter(t => t.ds_month_declared && filters.monthsDeclared!.includes(t.ds_month_declared))
+      filteredForDetails = filteredForDetails.filter(t => t.ds_month_declared && filters.monthsDeclared!.includes(t.ds_month_declared))
     }
 
     // Filtros de fecha
     if (filters.dateFrom) {
       filtered = filtered.filter(t => t.dt_date >= filters.dateFrom!)
+      filteredForDetails = filteredForDetails.filter(t => t.dt_date >= filters.dateFrom!)
     }
     if (filters.dateTo) {
       filtered = filtered.filter(t => t.dt_date <= filters.dateTo!)
+      filteredForDetails = filteredForDetails.filter(t => t.dt_date <= filters.dateTo!)
     }
 
     // Filtros de mes declarado desde/hasta
@@ -241,9 +259,17 @@ export default function AnalyticsPageClient({
         if (!t.ds_month_declared) return false
         return t.ds_month_declared >= filters.startMonth!
       })
+      filteredForDetails = filteredForDetails.filter(t => {
+        if (!t.ds_month_declared) return false
+        return t.ds_month_declared >= filters.startMonth!
+      })
     }
     if (filters.endMonth) {
       filtered = filtered.filter(t => {
+        if (!t.ds_month_declared) return false
+        return t.ds_month_declared <= filters.endMonth!
+      })
+      filteredForDetails = filteredForDetails.filter(t => {
         if (!t.ds_month_declared) return false
         return t.ds_month_declared <= filters.endMonth!
       })
@@ -264,8 +290,8 @@ export default function AnalyticsPageClient({
     setCategorySummary(categories)
     setSubcategorySummary(subcategories)
 
-    // Para sección Detalle
-    setDetailsTransactions(filtered)
+    // Para sección Detalle - usar transacciones originales (sin recalcular ft_amount)
+    setDetailsTransactions(filteredForDetails)
   }, [allTransactionsRaw, filters])
 
   // Cargar datos iniciales
@@ -1115,6 +1141,7 @@ export default function AnalyticsPageClient({
             setDetailsTransactionTypeFilter={setDetailsTransactionTypeFilter}
             setEditingTransaction={setEditingTransaction}
             onDeleteTransaction={handleDeleteTransaction}
+            filteredUserIds={filters.idUsers}
           />
         )}
 
@@ -1335,6 +1362,7 @@ function DetailsSection({
   setDetailsTransactionTypeFilter,
   setEditingTransaction,
   onDeleteTransaction,
+  filteredUserIds,
 }: {
   transactions: TransactionWithRelations[]
   categories: Category[]
@@ -1342,7 +1370,55 @@ function DetailsSection({
   setDetailsTransactionTypeFilter: (value: { income: boolean; expense: boolean }) => void
   setEditingTransaction: (transaction: TransactionWithRelations | null) => void
   onDeleteTransaction: (idTransaction: string) => void
+  filteredUserIds?: string[] | null
 }) {
+  // Expandir transacciones con múltiples ft_amount_user distintos
+  // Si hay usuarios filtrados, obtener ft_amount_user de esos usuarios
+  // Si no hay usuarios filtrados, obtener todos los ft_amount_user únicos
+  const expandedTransactions = transactions.flatMap(t => {
+    if (!t.users || t.users.length === 0) {
+      // Si no hay usuarios, mostrar 1 fila con ft_amount_user = 0
+      return [{
+        ...t,
+        ft_amount_user: 0,
+        uniqueKey: `${t.id_transaction}-0`
+      }]
+    }
+
+    // Si hay usuarios filtrados, obtener ft_amount_user de esos usuarios
+    // Si no hay usuarios filtrados, obtener todos los ft_amount_user únicos
+    let relevantUsers = t.users
+    if (filteredUserIds && filteredUserIds.length > 0) {
+      relevantUsers = t.users.filter(u => filteredUserIds.includes(u.id_user))
+    }
+
+    if (relevantUsers.length === 0) {
+      return [{
+        ...t,
+        ft_amount_user: 0,
+        uniqueKey: `${t.id_transaction}-0`
+      }]
+    }
+
+    // Obtener valores únicos de ft_amount_user de los usuarios relevantes
+    const uniqueAmounts = Array.from(new Set(relevantUsers.map(u => u.ft_amount_user)))
+    
+    // Si solo hay un valor único, mostrar 1 fila
+    if (uniqueAmounts.length === 1) {
+      return [{
+        ...t,
+        ft_amount_user: uniqueAmounts[0],
+        uniqueKey: `${t.id_transaction}-${uniqueAmounts[0]}`
+      }]
+    }
+
+    // Si hay múltiples valores distintos, mostrar una fila por cada valor
+    return uniqueAmounts.map(amount => ({
+      ...t,
+      ft_amount_user: amount,
+      uniqueKey: `${t.id_transaction}-${amount}`
+    }))
+  })
 
   return (
     <div className="space-y-6">
@@ -1391,19 +1467,20 @@ function DetailsSection({
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700">Personas Afectadas</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700">Comentario</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700">Importe</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700">Importe por persona</th>
                 <th className="text-center py-3 px-4 text-xs font-semibold text-gray-700">Acciones</th>
                                     </tr>
                                   </thead>
             <tbody>
-              {transactions.length === 0 ? (
+              {expandedTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-sm text-gray-500">
+                  <td colSpan={9} className="text-center py-8 text-sm text-gray-500">
                     No hay transacciones
                                           </td>
                 </tr>
               ) : (
-                transactions.map(t => (
-                  <tr key={t.id_transaction} className="border-b border-gray-100 hover:bg-gray-50">
+                expandedTransactions.map(t => (
+                  <tr key={t.uniqueKey} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-4 text-sm text-gray-900">{formatDate(t.dt_date, 'long')}</td>
                     <td className="py-3 px-4 text-sm">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -1423,6 +1500,9 @@ function DetailsSection({
                     <td className="py-3 px-4 text-sm text-gray-900">{t.ds_comments || '-'}</td>
                     <td className="py-3 px-4 text-sm text-right font-semibold text-gray-900">
                       {formatCurrency(t.ft_amount || 0)}
+                                          </td>
+                    <td className="py-3 px-4 text-sm text-right font-semibold text-gray-700">
+                      {formatCurrency(t.ft_amount_user || 0)}
                                           </td>
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-3">

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { isAppAdmin } from '@/lib/admin'
 
 // Helper para detectar prefers-reduced-motion
 const prefersReducedMotion = () => {
@@ -41,19 +42,24 @@ export default function Navigation({
     { name: 'Configuración', href: '/settings', icon: 'settings' },
   ]
 
+  // Verificar si el usuario es admin
+  const isAdmin = isAppAdmin(idUser, userData?.ds_email || null)
+
   const isActive = (href: string) => pathname === href
 
   // Cerrar menús al hacer click fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node
+      if (profileMenuRef.current && !profileMenuRef.current.contains(target)) {
         setIsProfileMenuOpen(false)
       }
-      if (familyMenuRef.current && !familyMenuRef.current.contains(event.target as Node)) {
+      if (familyMenuRef.current && !familyMenuRef.current.contains(target)) {
         setIsFamilyMenuOpen(false)
       }
     }
 
+    // Usar mousedown pero con un pequeño delay para que el click del botón se procese primero
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
@@ -100,7 +106,15 @@ export default function Navigation({
             <div className="px-4 py-3 mb-4 bg-slate-700/50 border border-slate-600/50 rounded-lg">
               <div className="relative" ref={familyMenuRef}>
                 <button
-                  onClick={() => setIsFamilyMenuOpen(!isFamilyMenuOpen)}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setIsFamilyMenuOpen(!isFamilyMenuOpen)
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
                   className="w-full flex items-center justify-between gap-2"
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -121,7 +135,16 @@ export default function Navigation({
                       {families.map((family) => (
                         <button
                           key={family.id_family}
-                          onClick={() => handleFamilyChange(family.id_family)}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleFamilyChange(family.id_family)
+                            setIsFamilyMenuOpen(false)
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }}
                           className={`block w-full text-left px-4 py-2 text-sm transition-colors ${
                             family.id_family === currentFamilyId
                               ? 'bg-slate-600/50 text-[#90EBD6] font-semibold'
@@ -239,7 +262,15 @@ export default function Navigation({
           {/* Family Selector - Mobile */}
           <div className="relative flex-1" ref={familyMenuRef}>
             <button
-              onClick={() => setIsFamilyMenuOpen(!isFamilyMenuOpen)}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setIsFamilyMenuOpen(!isFamilyMenuOpen)
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
               className="flex items-center gap-2 text-white/90 hover:text-white transition-colors"
             >
               <svg className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
@@ -257,13 +288,23 @@ export default function Navigation({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {isFamilyMenuOpen && (
+                {isFamilyMenuOpen && (
               <div className="absolute left-0 mt-2 w-56 rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50">
                 <div className="py-1">
                   {families.map((family) => (
                     <button
                       key={family.id_family}
-                      onClick={() => handleFamilyChange(family.id_family)}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        handleFamilyChange(family.id_family)
+                        setIsFamilyMenuOpen(false)
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        handleFamilyChange(family.id_family)
+                        setIsFamilyMenuOpen(false)
+                      }}
                       className={`block w-full text-left px-4 py-2 text-sm ${
                         family.id_family === currentFamilyId
                           ? 'bg-blue-50 text-blue-600'
@@ -278,6 +319,17 @@ export default function Navigation({
             )}
           </div>
 
+          {/* Admin Button - Mobile (solo para admin) */}
+          {isAdmin && (
+            <Link
+              href={`/admin${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 transition-colors ml-2"
+            >
+              <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1s.4-1 1-1h12c.6 0 1 .4 1 1z"/>
+              </svg>
+            </Link>
+          )}
           {/* Profile Button - Mobile */}
           <div className="relative ml-3" ref={profileMenuRef}>
             <button
@@ -320,6 +372,21 @@ export default function Navigation({
           {/* Family Selector - Desktop (ya está en sidebar, no necesario aquí) */}
         </div>
 
+        {/* Admin Button - Desktop (solo para admin) */}
+        {isAdmin && (
+          <Link
+            href={`/admin${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
+            className={`flex items-center gap-x-2 rounded-full p-2 transition-colors ${
+              isActive('/admin')
+                ? 'bg-slate-700 text-white'
+                : 'bg-slate-800/80 text-white hover:bg-slate-800'
+            }`}
+          >
+            <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1s.4-1 1-1h12c.6 0 1 .4 1 1z"/>
+            </svg>
+          </Link>
+        )}
         {/* Profile Button - Desktop */}
         <div className="relative" ref={profileMenuRef}>
           <button
