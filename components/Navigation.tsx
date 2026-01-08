@@ -157,7 +157,7 @@ export default function Navigation({
                   <Link
                     href={`${item.href === '/' && item.isNewTransaction ? `/?family=${currentFamilyId}&action=new-transaction` : `${item.href}${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}`}
                     className={`group flex gap-x-3 rounded-lg p-3 text-sm font-semibold leading-6 transition-colors ${
-                      (item.href === '/' && item.isNewTransaction && searchParams?.action === 'new-transaction') || (item.href !== '/' && isActive(item.href))
+                      (item.href === '/' && item.isNewTransaction && searchParams?.get('action') === 'new-transaction') || (item.href !== '/' && isActive(item.href))
                         ? 'bg-slate-700 text-white'
                         : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                     }`}

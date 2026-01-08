@@ -1,8 +1,8 @@
 import type { Database } from '@/types/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-type Category = Database['public']['Tables']['pml_dim_category']['Row']
-type Subcategory = Database['public']['Tables']['pml_dim_subcategory']['Row']
+export type Category = Database['public']['Tables']['pml_dim_category']['Row']
+export type Subcategory = Database['public']['Tables']['pml_dim_subcategory']['Row']
 type TransactionType = Database['public']['Tables']['pml_dim_transaction_type']['Row']
 
 /**

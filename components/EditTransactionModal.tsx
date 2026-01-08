@@ -482,6 +482,7 @@ export default function EditTransactionModal({
       {/* Modales */}
       {showCategoryModal && (
         <CategoryModal
+          isOpen={showCategoryModal}
           idFamily={idFamily}
           transactionType={transactionType}
           onClose={() => setShowCategoryModal(false)}
@@ -491,7 +492,9 @@ export default function EditTransactionModal({
 
       {showSubcategoryModal && formData.id_category && (
         <SubcategoryModal
+          isOpen={showSubcategoryModal}
           idCategory={formData.id_category}
+          categoryName={categories.find(c => c.id_category === formData.id_category)?.ds_category || ''}
           onClose={() => setShowSubcategoryModal(false)}
           onSubcategoryCreated={handleSubcategoryCreated}
         />
@@ -499,6 +502,7 @@ export default function EditTransactionModal({
 
       {showTagModal && (
         <TagModal
+          isOpen={showTagModal}
           idFamily={idFamily}
           onClose={() => setShowTagModal(false)}
           onTagCreated={handleTagCreated}

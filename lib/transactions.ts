@@ -202,7 +202,7 @@ export async function getTransactionWithRelations(
   }
 
   // Obtener usuarios con nombres
-  const userIds = usersResult.data?.map(u => u.id_user) || []
+  const userIds = (usersResult.data?.map(u => u.id_user).filter((id): id is string => id !== null) || [])
   let users: Array<{ id_user: string; ds_user: string | null; ft_amount_user: number }> = []
   if (userIds.length > 0) {
     const { data: usersData } = await supabase
@@ -211,11 +211,13 @@ export async function getTransactionWithRelations(
       .in('id_user', userIds)
     
     const userMap = new Map((usersData || []).map(u => [u.id_user, u.ds_user]))
-    users = (usersResult.data || []).map(u => ({
-      id_user: u.id_user,
-      ds_user: userMap.get(u.id_user) || null,
-      ft_amount_user: u.ft_amount_user,
-    }))
+    users = (usersResult.data || [])
+      .filter(u => u.id_user !== null)
+      .map(u => ({
+        id_user: u.id_user!,
+        ds_user: userMap.get(u.id_user!) || null,
+        ft_amount_user: u.ft_amount_user,
+      }))
   }
 
   return {
@@ -665,10 +667,10 @@ export async function getTransactionsForAnalytics(
   }
 
   // Obtener IDs únicos para hacer queries eficientes
-  const categoryIds = [...new Set(transactions.map(t => t.id_category).filter(Boolean))]
-  const subcategoryIds = [...new Set(transactions.map(t => t.id_subcategory).filter(Boolean))]
+  const categoryIds = Array.from(new Set(transactions.map(t => t.id_category).filter((id): id is string => id !== null)))
+  const subcategoryIds = Array.from(new Set(transactions.map(t => t.id_subcategory).filter((id): id is string => id !== null)))
   const transactionIds = transactions.map(t => t.id_transaction)
-  const typeIds = [...new Set(transactions.map(t => t.id_type).filter(Boolean))]
+  const typeIds = Array.from(new Set(transactions.map(t => t.id_type).filter((id): id is string => id !== null)))
 
   // Ejecutar todas las queries en paralelo para mejor rendimiento
   const [
@@ -728,7 +730,7 @@ export async function getTransactionsForAnalytics(
   const typeMap = new Map(transactionTypes.map(t => [t.id_type, t.ds_type as 'Income' | 'Expense']))
 
   // Procesar tags
-  const tagIds = [...new Set(transactionTags.map(tt => tt.id_tag).filter(Boolean))]
+  const tagIds = Array.from(new Set(transactionTags.map(tt => tt.id_tag).filter((id): id is string => id !== null)))
   const { data: tags } = tagIds.length > 0
     ? await supabase.from('pml_dim_tag').select('id_tag, ds_tag').in('id_tag', tagIds)
     : { data: [] }
@@ -742,7 +744,7 @@ export async function getTransactionsForAnalytics(
   })
 
   // Procesar usuarios
-  const userIds = [...new Set(transactionUsers.map(tu => tu.id_user).filter(Boolean))]
+  const userIds = Array.from(new Set(transactionUsers.map(tu => tu.id_user).filter((id): id is string => id !== null)))
   const { data: users } = userIds.length > 0
     ? await supabase.from('pml_dim_user').select('id_user, ds_user').in('id_user', userIds)
     : { data: [] }
@@ -764,7 +766,7 @@ export async function getTransactionsForAnalytics(
   })
 
   // Combinar todo
-  const processed: TransactionWithRelations[] = transactions
+  const processed = transactions
     .map(transaction => {
       const category = transaction.id_category ? categoryMap.get(transaction.id_category) : null
       const subcategory = transaction.id_subcategory ? subcategoryMap.get(transaction.id_subcategory) : null
@@ -829,7 +831,7 @@ export async function getTransactionsForAnalytics(
         users: filteredUsers,
       }
     })
-    .filter((t): t is TransactionWithRelations => t !== null)
+    .filter((t) => t !== null) as TransactionWithRelations[]
 
   return processed
 }

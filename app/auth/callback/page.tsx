@@ -96,10 +96,10 @@ export default function AuthCallback() {
           return
         }
         
-        if (data.session) {
+        if (data.session && data.user) {
           console.log('✅ Sesión establecida correctamente')
-          console.log('✅ Usuario ID:', data.user?.id)
-          console.log('✅ Email:', data.user?.email)
+          console.log('✅ Usuario ID:', data.user.id)
+          console.log('✅ Email:', data.user.email)
           
           // Crear el usuario en pml_dim_user si no existe
           const userMetadata = data.user.user_metadata || {}
