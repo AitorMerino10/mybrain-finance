@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
-  getTransactionsForAnalytics,
   calculateTotalSummary,
   calculateMonthlySummary,
   calculateCategorySummary,
@@ -29,6 +28,8 @@ import EditTransactionModal from './EditTransactionModal'
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   PieChart,
   Pie,
   Cell,
@@ -63,7 +64,7 @@ const colorsArray = [
 // Colores para ingresos/gastos/beneficios usando paleta pastel
 const incomeColor = '#A8D5E2' // pastel blue
 const expenseColor = '#f18a8a' // pastel red
-const benefitColor = '#14B8A6' // mismo color que KPI de beneficios
+const benefitColor = '#6EE7B7' // verde pastel mas suave
 
 const colors = {
   income: incomeColor,
@@ -105,7 +106,8 @@ export default function AnalyticsPageClient({
   const [loading, setLoading] = useState(true)
   const [activeSection, setActiveSection] = useState<ActiveSection>('general')
   const [chartViewType, setChartViewType] = useState<ChartViewType>('income-expense-benefit')
-  
+  const [benefitChartMode, setBenefitChartMode] = useState<'bar' | 'line'>('bar')
+
   // Filtros
   const [filtersVisible, setFiltersVisible] = useState(false)
   const [filters, setFilters] = useState<AnalyticsFilters>({
@@ -132,6 +134,8 @@ export default function AnalyticsPageClient({
 
   // Sección Detalle
   const [detailsTransactions, setDetailsTransactions] = useState<TransactionWithRelations[]>([])
+  const [detailsPage, setDetailsPage] = useState(1)
+  const [detailsPageSize, setDetailsPageSize] = useState(10)
   const [detailsCategoryFilter, setDetailsCategoryFilter] = useState<string>('')
   const [detailsSubcategoryFilter, setDetailsSubcategoryFilter] = useState<string>('')
   const [detailsTransactionTypeFilter, setDetailsTransactionTypeFilter] = useState<{ income: boolean; expense: boolean }>({ income: true, expense: true })
@@ -184,8 +188,16 @@ export default function AnalyticsPageClient({
         endMonth: null,
       }
       
-      const transactions = await getTransactionsForAnalytics(supabase, filtersToUse)
-      setAllTransactionsRaw(transactions)
+      const response = await fetch('/api/analytics/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filtersToUse),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al cargar transacciones')
+      }
+      setAllTransactionsRaw(data.transactions || [])
     } catch (err) {
       console.error('Error al cargar datos:', err)
     } finally {
@@ -292,6 +304,7 @@ export default function AnalyticsPageClient({
 
     // Para sección Detalle - usar transacciones originales (sin recalcular ft_amount)
     setDetailsTransactions(filteredForDetails)
+    setDetailsPage(1)
   }, [allTransactionsRaw, filters])
 
   // Cargar datos iniciales
@@ -361,17 +374,28 @@ export default function AnalyticsPageClient({
   const getBarChartData = () => {
     if (chartViewType === 'income-expense-benefit') {
       return monthlySummary.map(m => {
-        const maxValue = Math.max(m.income, m.expense, Math.abs(m.benefit))
-        const total = m.income + m.expense + Math.abs(m.benefit)
-        const scale = total > 0 ? maxValue / total : 1
+        const values = [
+          { key: 'benefit', value: Math.abs(m.benefit), color: benefitColor },
+          { key: 'expense', value: m.expense, color: expenseColor },
+          { key: 'income', value: m.income, color: incomeColor },
+        ].sort((a, b) => a.value - b.value)
+
+        const segment1 = values[0]?.value || 0
+        const segment2 = values[1]?.value ? Math.max(values[1].value - values[0].value, 0) : 0
+        const segment3 = values[2]?.value ? Math.max(values[2].value - values[1].value, 0) : 0
 
         return {
           month: m.monthDisplay,
           monthValue: m.month,
-          maxValue,
-          income: m.income * scale,
-          expense: m.expense * scale,
-          benefit: Math.abs(m.benefit) * scale,
+          segment1,
+          segment2,
+          segment3,
+          segment1Color: values[0]?.color || benefitColor,
+          segment2Color: values[1]?.color || expenseColor,
+          segment3Color: values[2]?.color || incomeColor,
+          income: m.income,
+          expense: m.expense,
+          benefit: m.benefit,
           // Valores reales para tooltip
           incomeReal: m.income,
           expenseReal: m.expense,
@@ -581,7 +605,7 @@ export default function AnalyticsPageClient({
   }
 
   if (loading && activeSection !== 'comparator') {
-      return (
+    return (
       <div className="min-h-screen bg-gray-50">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           <div className="grid grid-cols-3 gap-4 mb-6">
@@ -591,8 +615,8 @@ export default function AnalyticsPageClient({
           </div>
           <SkeletonCard />
         </div>
-        </div>
-      )
+      </div>
+    )
   }
 
   const barChartData = getBarChartData()
@@ -619,8 +643,8 @@ export default function AnalyticsPageClient({
               <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold italic text-gray-900 mb-1.5">
               Analítica
             </h1>
-              <p className="text-sm sm:text-base text-gray-500">
-              Análisis financiero inteligente
+            <p className="text-sm sm:text-base text-gray-500">
+              Baja al máximo detalle.
             </p>
           </div>
           </div>
@@ -640,31 +664,31 @@ export default function AnalyticsPageClient({
         {/* KPIs Globales */}
         <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
           <div className="bg-gray-50 rounded-2xl shadow-sm border border-gray-100 relative p-2 sm:p-5 md:p-6">
-            <div className="mb-1 sm:mb-2">
-              <h3 className="text-[8px] sm:text-[10px] md:text-xs font-bold text-gray-600 uppercase tracking-wider">Ingresos Totales</h3>
-                  </div>
+            <div className="mb-1 sm:mb-2 min-h-[24px] sm:min-h-0">
+              <h3 className="text-[8px] sm:text-[10px] md:text-xs font-bold text-gray-600 uppercase tracking-wider leading-tight">Ingresos Totales</h3>
+            </div>
             <p className="text-sm sm:text-2xl md:text-3xl lg:text-4xl font-extrabold mb-1" style={{ color: colors.income }}>
               {formatCurrency(totalSummary.income)}
             </p>
-                  </div>
+          </div>
 
           <div className="bg-gray-50 rounded-2xl shadow-sm border border-gray-100 relative p-2 sm:p-5 md:p-6">
-            <div className="mb-1 sm:mb-2">
-              <h3 className="text-[8px] sm:text-[10px] md:text-xs font-bold text-gray-600 uppercase tracking-wider">Beneficios Totales</h3>
-                  </div>
+            <div className="mb-1 sm:mb-2 min-h-[24px] sm:min-h-0">
+              <h3 className="text-[8px] sm:text-[10px] md:text-xs font-bold text-gray-600 uppercase tracking-wider leading-tight">Beneficios Totales</h3>
+            </div>
             <p className={`text-sm sm:text-2xl md:text-3xl lg:text-4xl font-extrabold mb-1 ${totalSummary.benefit >= 0 ? 'text-[#14B8A6]' : 'text-[#f18a8a]'}`}>
               {formatCurrency(totalSummary.benefit)}
             </p>
-                  </div>
+          </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 sm:p-5 md:p-6">
-            <div className="mb-1 sm:mb-2">
-              <h3 className="text-[8px] sm:text-[10px] md:text-xs font-bold text-gray-600 uppercase tracking-wider">Beneficio Medio Mensual</h3>
-                  </div>
+            <div className="mb-1 sm:mb-2 min-h-[24px] sm:min-h-0">
+              <h3 className="text-[8px] sm:text-[10px] md:text-xs font-bold text-gray-600 uppercase tracking-wider leading-tight">Beneficio Medio Mensual</h3>
+            </div>
             <p className={`text-sm sm:text-2xl md:text-3xl lg:text-4xl font-extrabold mb-1 ${medianMonthlyBenefit >= 0 ? 'text-[#14B8A6]' : 'text-[#f18a8a]'}`}>
               {formatCurrency(medianMonthlyBenefit)}
             </p>
-                </div>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -785,31 +809,60 @@ export default function AnalyticsPageClient({
               </button>
             </div>
 
-            {/* Gráfico de barras temporal */}
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Evolución Temporal</h2>
+            {/* Gráfico temporal */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <h2 className="text-xl font-bold text-gray-900">Evolución Temporal</h2>
+                {chartViewType === 'income-expense-benefit' && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setBenefitChartMode('bar')}
+                      className={`h-7 w-7 rounded-full text-sm transition-colors ${
+                        benefitChartMode === 'bar'
+                          ? 'bg-[#90EBD6]/20 text-[#0d9488]'
+                          : 'bg-gray-100 text-gray-500 hover:text-gray-700'
+                      }`}
+                      aria-label="Ver barras"
+                      title="Ver barras"
+                    >
+                      📊
+                    </button>
+                    <button
+                      onClick={() => setBenefitChartMode('line')}
+                      className={`h-7 w-7 rounded-full text-sm transition-colors ${
+                        benefitChartMode === 'line'
+                          ? 'bg-[#90EBD6]/20 text-[#0d9488]'
+                          : 'bg-gray-100 text-gray-500 hover:text-gray-700'
+                      }`}
+                      aria-label="Ver líneas"
+                      title="Ver líneas"
+                    >
+                      📈
+                    </button>
+                  </div>
+                )}
+              </div>
               {barChartData.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-sm text-gray-500">No hay datos para mostrar</p>
                 </div>
               ) : (
-                <div>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={barChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="month" tick={{ fontSize: 12, fill: colors.text.secondary }} />
-                      <YAxis tick={{ fontSize: 12, fill: colors.text.secondary }} />
-                      <Tooltip 
-                        wrapperStyle={{ zIndex: 9999 }}
-                        contentStyle={{ backgroundColor: '#ffffff', border: '2px solid #d1d5db', borderRadius: '0.5rem', padding: '12px', opacity: 1, zIndex: 9999 }}
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0].payload
-                            return (
-                            <div className="bg-white rounded-lg shadow-xl border-2 border-gray-300 p-3" style={{ opacity: 1, backgroundColor: '#ffffff' }}>
-                              <p className="text-sm font-semibold mb-2">{data.month}</p>
-                              {chartViewType === 'income-expense-benefit' ? (
-                                <>
+                <div className="mt-2">
+                  <ResponsiveContainer width="100%" height={320}>
+                    {chartViewType === 'income-expense-benefit' && benefitChartMode === 'line' ? (
+                      <LineChart data={barChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="month" tick={{ fontSize: 12, fill: colors.text.secondary }} />
+                        <YAxis tick={{ fontSize: 12, fill: colors.text.secondary }} />
+                        <Tooltip
+                          wrapperStyle={{ zIndex: 9999 }}
+                          contentStyle={{ backgroundColor: '#ffffff', border: '2px solid #d1d5db', borderRadius: '0.5rem', padding: '12px', opacity: 1, zIndex: 9999 }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload
+                              return (
+                                <div className="bg-white rounded-lg shadow-xl border-2 border-gray-300 p-3" style={{ opacity: 1, backgroundColor: '#ffffff' }}>
+                                  <p className="text-sm font-semibold mb-2">{data.month}</p>
                                   <p className="text-xs text-gray-600 mb-1">
                                     Ingresos: <span className="font-bold">{formatCurrency(data.incomeReal)}</span>
                                   </p>
@@ -819,121 +872,212 @@ export default function AnalyticsPageClient({
                                   <p className="text-xs text-gray-600">
                                     Beneficio: <span className="font-bold">{formatCurrency(data.benefitReal)}</span>
                                   </p>
-                                </>
-                              ) : (
-                                payload
-                                  .filter((entry: any) => entry.value > 0)
-                                  .map((entry: any, index: number) => {
-                                    const realKey = `${entry.dataKey}_real`
-                                    const realValue = data[realKey] || 0
-                                    return (
-                                      <p key={index} className="text-xs text-gray-600 mb-1">
-                                        {entry.name}: <span className="font-bold">{formatCurrency(realValue)}</span>
-                                      </p>
-                                    )
-                                  })
-                              )}
-                              </div>
-                            )
-                          }
-                          return null
-                        }}
-                      />
-                    {chartViewType === 'income-expense-benefit' ? (
-                      <>
-                        {/* Ordenar de menor a mayor - el más pequeño va primero (más cerca del eje X) */}
-                        {/* Para cada mes, ordenamos los valores y los apilamos de menor a mayor */}
-                        {(() => {
-                          // Ordenar por valor promedio para mantener consistencia visual
-                          const avgValues = barChartData.length > 0 ? {
-                            income: barChartData.reduce((sum, d) => sum + d.incomeReal, 0) / barChartData.length,
-                            expense: barChartData.reduce((sum, d) => sum + d.expenseReal, 0) / barChartData.length,
-                            benefit: barChartData.reduce((sum, d) => sum + Math.abs(d.benefitReal), 0) / barChartData.length,
-                          } : { income: 0, expense: 0, benefit: 0 }
-                          
-                          const sorted = [
-                            { key: 'income', value: avgValues.income, color: incomeColor, label: 'Ingresos' },
-                            { key: 'expense', value: avgValues.expense, color: expenseColor, label: 'Gastos' },
-                            { key: 'benefit', value: avgValues.benefit, color: benefitColor, label: 'Beneficio' },
-                          ].sort((a, b) => a.value - b.value)
-                          
-                          return sorted.map(item => (
-                            <Bar 
-                              key={item.key} 
-                              dataKey={item.key} 
-                              stackId="a" 
-                              fill={item.color} 
-                              name={item.label}
-                            />
-                          ))
-                        })()}
-                      </>
-                    ) : (
-                      <>
-                        {chartViewType === 'categories' ? (
-                          <>
-                            {/* Ordenar categorías por valor total (de menor a mayor) */}
-                            {(() => {
-                              const sortedCategories = [...categorySummary.slice(0, 10)].sort((a, b) => a.total - b.total)
-                              return (
-                                <>
-                                  {sortedCategories.map((cat, index) => (
-                                    <Bar 
-                                      key={cat.id_category} 
-                                      dataKey={cat.ds_category} 
-                                      stackId="a" 
-                                      fill={colorsArray[index % colorsArray.length]}
-                                    />
-                                  ))}
-                                  {categorySummary.length > 10 && (
-                                    <Bar 
-                                      dataKey="Otros" 
-                                      stackId="a" 
-                                      fill={colorsArray[7]}
-                                    />
-                                  )}
-                                </>
+                                </div>
                               )
-                            })()}
+                            }
+                            return null
+                          }}
+                        />
+                        <Line type="linear" dataKey="expense" stroke={expenseColor} name="Gastos" dot={{ r: 4 }} activeDot={{ r: 5 }} strokeWidth={2} />
+                        <Line type="linear" dataKey="income" stroke={incomeColor} name="Ingresos" dot={{ r: 4 }} activeDot={{ r: 5 }} strokeWidth={2} />
+                        <Line type="linear" dataKey="benefit" stroke={benefitColor} name="Beneficio" dot={{ r: 4 }} activeDot={{ r: 5 }} strokeWidth={2} />
+                      </LineChart>
+                    ) : (
+                      <BarChart data={barChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="month" tick={{ fontSize: 12, fill: colors.text.secondary }} />
+                        <YAxis tick={{ fontSize: 12, fill: colors.text.secondary }} />
+                        <Tooltip 
+                          wrapperStyle={{ zIndex: 9999 }}
+                          contentStyle={{ backgroundColor: '#ffffff', border: '2px solid #d1d5db', borderRadius: '0.5rem', padding: '12px', opacity: 1, zIndex: 9999 }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload
+                              return (
+                                <div className="bg-white rounded-lg shadow-xl border-2 border-gray-300 p-3" style={{ opacity: 1, backgroundColor: '#ffffff' }}>
+                                  <p className="text-sm font-semibold mb-2">{data.month}</p>
+                                  {chartViewType === 'income-expense-benefit' ? (
+                                    <>
+                                      <p className="text-xs text-gray-600 mb-1">
+                                        Ingresos: <span className="font-bold">{formatCurrency(data.incomeReal)}</span>
+                                      </p>
+                                      <p className="text-xs text-gray-600 mb-1">
+                                        Gastos: <span className="font-bold">{formatCurrency(data.expenseReal)}</span>
+                                      </p>
+                                      <p className="text-xs text-gray-600">
+                                        Beneficio: <span className="font-bold">{formatCurrency(data.benefitReal)}</span>
+                                      </p>
+                                    </>
+                                  ) : (
+                                    payload
+                                      .filter((entry: any) => entry.value > 0)
+                                      .map((entry: any, index: number) => {
+                                        const realKey = `${entry.dataKey}_real`
+                                        const realValue = data[realKey] || 0
+                                        return (
+                                          <p key={index} className="text-xs text-gray-600 mb-1">
+                                            {entry.name}: <span className="font-bold">{formatCurrency(realValue)}</span>
+                                          </p>
+                                        )
+                                      })
+                                  )}
+                                </div>
+                              )
+                            }
+                            return null
+                          }}
+                        />
+                        {chartViewType === 'income-expense-benefit' ? (
+                          <>
+                            <Bar dataKey="segment1" stackId="a" name="Segmento 1">
+                              {barChartData.map((entry, index) => (
+                                <Cell key={`seg1-${index}`} fill={entry.segment1Color} />
+                              ))}
+                            </Bar>
+                            <Bar dataKey="segment2" stackId="a" name="Segmento 2">
+                              {barChartData.map((entry, index) => (
+                                <Cell key={`seg2-${index}`} fill={entry.segment2Color} />
+                              ))}
+                            </Bar>
+                            <Bar dataKey="segment3" stackId="a" name="Segmento 3">
+                              {barChartData.map((entry, index) => (
+                                <Cell key={`seg3-${index}`} fill={entry.segment3Color} />
+                              ))}
+                            </Bar>
                           </>
                         ) : (
                           <>
-                            {/* Ordenar subcategorías por valor total (de menor a mayor) */}
-                            {(() => {
-                              const sortedSubcategories = [...subcategorySummary.slice(0, 10)].sort((a, b) => a.total - b.total)
-              return (
-                                <>
-                                  {sortedSubcategories.map((subcat, index) => (
-                                    <Bar 
-                                      key={subcat.id_subcategory} 
-                                      dataKey={subcat.ds_subcategory} 
-                                      stackId="a" 
-                                      fill={colorsArray[index % colorsArray.length]}
-                                    />
-                                  ))}
-                                  {subcategorySummary.length > 10 && (
-                                    <Bar 
-                                      dataKey="Otros" 
-                                      stackId="a" 
-                                      fill={colorsArray[7]}
-                                    />
-                                  )}
-                                </>
-                              )
-                            })()}
+                            {chartViewType === 'categories' ? (
+                              <>
+                                {/* Ordenar categorías por valor total (de menor a mayor) */}
+                                {(() => {
+                                  const sortedCategories = [...categorySummary.slice(0, 10)].sort((a, b) => a.total - b.total)
+                                  return (
+                                    <>
+                                      {sortedCategories.map((cat, index) => (
+                                        <Bar 
+                                          key={cat.id_category} 
+                                          dataKey={cat.ds_category} 
+                                          stackId="a" 
+                                          fill={colorsArray[index % colorsArray.length]}
+                                        />
+                                      ))}
+                                      {categorySummary.length > 10 && (
+                                        <Bar 
+                                          dataKey="Otros" 
+                                          stackId="a" 
+                                          fill={colorsArray[7]}
+                                        />
+                                      )}
+                                    </>
+                                  )
+                                })()}
+                              </>
+                            ) : (
+                              <>
+                                {/* Ordenar subcategorías por valor total (de menor a mayor) */}
+                                {(() => {
+                                  const sortedSubcategories = [...subcategorySummary.slice(0, 10)].sort((a, b) => a.total - b.total)
+                                  return (
+                                    <>
+                                      {sortedSubcategories.map((subcat, index) => (
+                                        <Bar 
+                                          key={subcat.id_subcategory} 
+                                          dataKey={subcat.ds_subcategory} 
+                                          stackId="a" 
+                                          fill={colorsArray[index % colorsArray.length]}
+                                        />
+                                      ))}
+                                      {subcategorySummary.length > 10 && (
+                                        <Bar 
+                                          dataKey="Otros" 
+                                          stackId="a" 
+                                          fill={colorsArray[7]}
+                                        />
+                                      )}
+                                    </>
+                                  )
+                                })()}
+                              </>
+                            )}
                           </>
                         )}
-                      </>
+                      </BarChart>
                     )}
-                      <Legend
-                        wrapperStyle={{ paddingTop: '20px' }}
-                        formatter={(value) => value}
-                      />
-                    </BarChart>
                   </ResponsiveContainer>
+                  {chartViewType === 'income-expense-benefit' && benefitChartMode === 'bar' && (
+                    <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: benefitColor }} />
+                        Beneficio
                       </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: expenseColor }} />
+                        Gastos
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: incomeColor }} />
+                        Ingresos
+                      </div>
+                    </div>
+                  )}
+                  {chartViewType === 'income-expense-benefit' && benefitChartMode === 'line' && (
+                    <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: benefitColor }} />
+                        Beneficio
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: expenseColor }} />
+                        Gastos
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: incomeColor }} />
+                        Ingresos
+                      </div>
+                    </div>
+                  )}
+                  {chartViewType === 'categories' && (
+                    <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                      {[...categorySummary.slice(0, 6)].map((cat, index) => (
+                        <div key={cat.id_category} className="flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: colorsArray[index % colorsArray.length] }}
+                          />
+                          {cat.ds_category}
+                        </div>
+                      ))}
+                      {categorySummary.length > 6 && (
+                        <div className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorsArray[7] }} />
+                          Otros
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {chartViewType === 'subcategories' && (
+                    <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                      {[...subcategorySummary.slice(0, 6)].map((sub, index) => (
+                        <div key={sub.id_subcategory} className="flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: colorsArray[index % colorsArray.length] }}
+                          />
+                          {sub.ds_subcategory}
+                        </div>
+                      ))}
+                      {subcategorySummary.length > 6 && (
+                        <div className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorsArray[7] }} />
+                          Otros
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
-                  </div>
+            </div>
 
             {/* Pie Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1007,9 +1151,9 @@ export default function AnalyticsPageClient({
                               </PieChart>
                             </ResponsiveContainer>
                       {/* Total en el centro del donut */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mb-4">
-                        <p className="text-xs text-gray-500 mb-1">Total</p>
-                        <p className="text-lg font-bold text-gray-900">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mb-4 px-4">
+                        <p className="text-[10px] sm:text-xs text-gray-500 mb-1">Total</p>
+                        <p className="text-sm sm:text-base font-bold text-gray-900 text-center leading-tight max-w-[120px]">
                           {formatCurrency(categoryPieData.reduce((sum, item) => sum + item.value, 0))}
                         </p>
                       </div>
@@ -1102,9 +1246,9 @@ export default function AnalyticsPageClient({
                                 </PieChart>
                               </ResponsiveContainer>
                     {/* Total en el centro del donut */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ height: '250px' }}>
-                      <p className="text-xs text-gray-500 mb-1">Total</p>
-                      <p className="text-lg font-bold text-gray-900">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4" style={{ height: '250px' }}>
+                      <p className="text-[10px] sm:text-xs text-gray-500 mb-1">Total</p>
+                      <p className="text-sm sm:text-base font-bold text-gray-900 text-center leading-tight max-w-[120px]">
                         {formatCurrency(subcategoryPieData.reduce((sum, item) => sum + item.value, 0))}
                       </p>
                             </div>
@@ -1134,7 +1278,8 @@ export default function AnalyticsPageClient({
 
         {/* Sección Detalle */}
         {activeSection === 'details' && (
-          <DetailsSection
+          <div>
+            <DetailsSection
             transactions={filteredDetails}
             categories={initialCategories}
             detailsTransactionTypeFilter={detailsTransactionTypeFilter}
@@ -1142,12 +1287,18 @@ export default function AnalyticsPageClient({
             setEditingTransaction={setEditingTransaction}
             onDeleteTransaction={handleDeleteTransaction}
             filteredUserIds={filters.idUsers}
+            page={detailsPage}
+            pageSize={detailsPageSize}
+            setPage={setDetailsPage}
+            setPageSize={setDetailsPageSize}
           />
+          </div>
         )}
 
         {/* Sección Comparador */}
         {activeSection === 'comparator' && (
-          <ComparatorSection
+          <div>
+            <ComparatorSection
             cases={comparatorCases}
             comparisonResult={comparisonResult}
             addCase={addComparatorCase}
@@ -1159,6 +1310,7 @@ export default function AnalyticsPageClient({
             availableMonths={availableMonths}
             familyMembers={familyMembers}
           />
+          </div>
         )}
 
         {/* Modal de edición */}
@@ -1363,6 +1515,10 @@ function DetailsSection({
   setEditingTransaction,
   onDeleteTransaction,
   filteredUserIds,
+  page,
+  pageSize,
+  setPage,
+  setPageSize,
 }: {
   transactions: TransactionWithRelations[]
   categories: Category[]
@@ -1371,6 +1527,10 @@ function DetailsSection({
   setEditingTransaction: (transaction: TransactionWithRelations | null) => void
   onDeleteTransaction: (idTransaction: string) => void
   filteredUserIds?: string[] | null
+  page: number
+  pageSize: number
+  setPage: (value: number) => void
+  setPageSize: (value: number) => void
 }) {
   // Expandir transacciones con múltiples ft_amount_user distintos
   // Si hay usuarios filtrados, obtener ft_amount_user de esos usuarios
@@ -1420,6 +1580,11 @@ function DetailsSection({
     }))
   })
 
+  const totalPages = Math.max(1, Math.ceil(expandedTransactions.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const startIndex = (currentPage - 1) * pageSize
+  const pagedTransactions = expandedTransactions.slice(startIndex, startIndex + pageSize)
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
@@ -1455,6 +1620,46 @@ function DetailsSection({
           </button>
                                         </div>
 
+        {/* Controles de paginación */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div className="text-xs text-gray-600">
+            Mostrando {expandedTransactions.length === 0 ? 0 : startIndex + 1}
+            {' '}a {Math.min(startIndex + pageSize, expandedTransactions.length)} de {expandedTransactions.length}
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">Por página</label>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value))
+                setPage(1)
+              }}
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+            >
+              {[10, 20, 50].map(size => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs disabled:opacity-50"
+            >
+              ‹
+            </button>
+            <span className="text-xs text-gray-600">
+              {currentPage}/{totalPages}
+            </span>
+            <button
+              onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs disabled:opacity-50"
+            >
+              ›
+            </button>
+          </div>
+        </div>
+
         {/* Tabla de transacciones */}
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -1472,14 +1677,14 @@ function DetailsSection({
                                     </tr>
                                   </thead>
             <tbody>
-              {expandedTransactions.length === 0 ? (
+              {pagedTransactions.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="text-center py-8 text-sm text-gray-500">
                     No hay transacciones
                                           </td>
                 </tr>
               ) : (
-                expandedTransactions.map(t => (
+                pagedTransactions.map(t => (
                   <tr key={t.uniqueKey} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-4 text-sm text-gray-900">{formatDate(t.dt_date, 'long')}</td>
                     <td className="py-3 px-4 text-sm">

@@ -23,6 +23,7 @@ import {
 } from '@/lib/categories'
 import AddFamilyMemberModal from './AddFamilyMemberModal'
 import CategoryManager from './CategoryManager'
+import CsvImportPanel from './CsvImportPanel'
 
 interface AccountPageClientProps {
   userId: string
@@ -39,7 +40,7 @@ export default function AccountPageClient({
   userData,
 }: AccountPageClientProps) {
   const [activeTab, setActiveTab] = useState<
-    'account' | 'family' | 'other-families' | 'categories'
+    'account' | 'family' | 'other-families' | 'categories' | 'import'
   >('account')
   const [currentFamily, setCurrentFamily] = useState<{
     id_family: string
@@ -47,6 +48,11 @@ export default function AccountPageClient({
   } | null>(null)
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [otherFamilies, setOtherFamilies] = useState<UserFamily[]>([])
+  const [familiesWithMembers, setFamiliesWithMembers] = useState<Array<{
+    id_family: string
+    ds_family: string
+    members: FamilyMember[]
+  }>>([])
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showAddMemberModal, setShowAddMemberModal] = useState(false)
@@ -96,6 +102,18 @@ export default function AccountPageClient({
         // Cargar otras familias
         const families = await getUserFamilies(supabase, userId)
         setOtherFamilies(families)
+
+        const familiesWithMembersData = await Promise.all(
+          families.map(async (f) => {
+            const members = await getFamilyMembers(supabase, f.id_family)
+            return {
+              id_family: f.id_family,
+              ds_family: f.ds_family,
+              members,
+            }
+          })
+        )
+        setFamiliesWithMembers(familiesWithMembersData)
       } catch (err) {
         console.error('Error al cargar datos:', err)
       } finally {
@@ -174,6 +192,14 @@ export default function AccountPageClient({
     )
   }
 
+  const familiesForImport = familiesWithMembers.length > 0
+    ? familiesWithMembers
+    : (currentFamily ? [{
+        id_family: currentFamily.id_family,
+        ds_family: currentFamily.ds_family,
+        members: familyMembers,
+      }] : [])
+
   return (
     <div>
         {/* Tabs */}
@@ -218,6 +244,16 @@ export default function AccountPageClient({
               }`}
             >
               Categorías
+            </button>
+            <button
+              onClick={() => setActiveTab('import')}
+              className={`whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition-colors ${
+                activeTab === 'import'
+                  ? 'border-[#90EBD6] text-[#0d9488]'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              }`}
+            >
+              Migración CSV
             </button>
           </nav>
         </div>
@@ -397,6 +433,14 @@ export default function AccountPageClient({
 
           {activeTab === 'categories' && currentFamily && (
             <CategoryManager idFamily={currentFamily.id_family} />
+          )}
+
+          {activeTab === 'import' && (
+            <CsvImportPanel
+              families={familiesForImport}
+              defaultFamilyId={currentFamily?.id_family}
+              title="Migración CSV"
+            />
           )}
         </div>
 

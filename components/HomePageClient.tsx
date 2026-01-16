@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { getTransactionsForAnalytics, calculateMonthlySummary, calculateCategorySummary, type TransactionWithRelations } from '@/lib/transactions'
+import { calculateMonthlySummary, calculateCategorySummary, type TransactionWithRelations } from '@/lib/transactions'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import TransactionForm from './TransactionForm'
 import type { TransactionTypeName } from '@/types/transactions'
@@ -61,15 +60,27 @@ export default function HomePageClient({
         setLoading(true)
 
         // Obtener todas las transacciones
-        const transactions = await getTransactionsForAnalytics(supabase, {
-          idFamily,
-          idUser: idUser,
-          idCategory: null,
-          idSubcategory: null,
-          idTag: null,
-          startMonth: null,
-          endMonth: null,
+        const response = await fetch('/api/analytics/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idFamily,
+            idUsers: [idUser],
+            idCategories: null,
+            idSubcategories: null,
+            idTags: null,
+            monthsDeclared: null,
+            dateFrom: null,
+            dateTo: null,
+            startMonth: null,
+            endMonth: null,
+          }),
         })
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data.error || 'Error al cargar transacciones')
+        }
+        const transactions = (data.transactions || []) as TransactionWithRelations[]
 
         // Obtener mes actual y anterior
         const currentMonth = getCurrentMonth()
@@ -201,57 +212,59 @@ export default function HomePageClient({
             </button>
           </div>
 
-          {/* Radio buttons tipo card */}
-          <div className="mb-8">
-            <label className="block text-sm font-semibold text-gray-700 mb-4">
-              Tipo de transacción *
-            </label>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setSelectedTransactionType('Expense')}
-                className={`relative p-4 rounded-xl border-2 transition-all duration-200 ${
-                  currentType === 'Expense'
-                    ? 'border-red-500 bg-red-50 shadow-md'
-                    : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
-                }`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
-                    currentType === 'Expense' ? 'bg-red-500' : 'bg-gray-300'
-                  }`} />
-                  <span className={`font-semibold transition-colors duration-200 ${
-                    currentType === 'Expense' ? 'text-red-600' : 'text-gray-600'
-                  }`}>
-                    Gasto
-                  </span>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedTransactionType('Income')}
-                className={`relative p-4 rounded-xl border-2 transition-all duration-200 ${
-                  currentType === 'Income'
-                    ? 'border-green-500 bg-green-50 shadow-md'
-                    : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
-                }`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
-                    currentType === 'Income' ? 'bg-green-500' : 'bg-gray-300'
-                  }`} />
-                  <span className={`font-semibold transition-colors duration-200 ${
-                    currentType === 'Income' ? 'text-green-600' : 'text-gray-600'
-                  }`}>
-                    Ingreso
-                  </span>
-                </div>
-              </button>
+          {/* Radio buttons tipo card y formulario */}
+          <div>
+            {/* Radio buttons tipo card */}
+            <div className="mb-8">
+              <label className="block text-sm font-semibold text-gray-700 mb-4">
+                Tipo de transacción *
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTransactionType('Expense')}
+                  className={`relative p-4 rounded-xl border-2 transition-all duration-200 ${
+                    currentType === 'Expense'
+                      ? 'border-red-500 bg-red-50 shadow-md'
+                      : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
+                      currentType === 'Expense' ? 'bg-red-500' : 'bg-gray-300'
+                    }`} />
+                    <span className={`font-semibold transition-colors duration-200 ${
+                      currentType === 'Expense' ? 'text-red-600' : 'text-gray-600'
+                    }`}>
+                      Gasto
+                    </span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTransactionType('Income')}
+                  className={`relative p-4 rounded-xl border-2 transition-all duration-200 ${
+                    currentType === 'Income'
+                      ? 'border-green-500 bg-green-50 shadow-md'
+                      : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
+                      currentType === 'Income' ? 'bg-green-500' : 'bg-gray-300'
+                    }`} />
+                    <span className={`font-semibold transition-colors duration-200 ${
+                      currentType === 'Income' ? 'text-green-600' : 'text-gray-600'
+                    }`}>
+                      Ingreso
+                    </span>
+                  </div>
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* Formulario */}
-          <TransactionForm
+            {/* Formulario */}
+            <TransactionForm
             key={currentType} // Key para forzar re-render cuando cambia el tipo
             transactionType={currentType}
             idFamily={idFamily}
@@ -269,6 +282,7 @@ export default function HomePageClient({
               router.push(`/?family=${idFamily}`)
             }}
           />
+          </div>
         </div>
       </div>
     )

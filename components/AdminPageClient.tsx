@@ -12,9 +12,10 @@ import {
   type FamilyRequest,
 } from '@/lib/admin'
 import { formatDate } from '@/lib/format'
+import CsvImportPanel from './CsvImportPanel'
 import Link from 'next/link'
 
-type ActiveTab = 'families' | 'users' | 'pending' | 'history'
+type ActiveTab = 'families' | 'users' | 'pending' | 'history' | 'import'
 
 interface AdminPageClientProps {
   initialFamilies?: Array<{
@@ -189,6 +190,16 @@ export default function AdminPageClient({
         >
           Historial
         </button>
+        <button
+          onClick={() => setActiveTab('import')}
+          className={`px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${
+            activeTab === 'import'
+              ? 'border-[#90EBD6] text-[#0d9488]'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Migración CSV
+        </button>
       </div>
 
       {/* Content */}
@@ -212,6 +223,10 @@ export default function AdminPageClient({
 
         {activeTab === 'history' && (
           <HistorySection requests={allRequests.filter(r => r.ds_status !== 'pending')} />
+        )}
+
+        {activeTab === 'import' && (
+          <CsvImportPanel families={families} title="Migración CSV (Admin)" />
         )}
       </div>
     </div>

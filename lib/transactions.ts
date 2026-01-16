@@ -605,6 +605,26 @@ export interface MonthAnalysis {
   top5Subcategories: SubcategorySummary[]
 }
 
+async function fetchInChunks<T>(
+  ids: string[],
+  chunkSize: number,
+  fetcher: (chunk: string[]) => Promise<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  if (ids.length === 0) return []
+  const results: T[] = []
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize)
+    const { data, error } = await fetcher(chunk)
+    if (error) {
+      throw error
+    }
+    if (data) {
+      results.push(...data)
+    }
+  }
+  return results
+}
+
 /**
  * Obtiene transacciones con todas sus relaciones para analítica
  */
@@ -676,9 +696,9 @@ export async function getTransactionsForAnalytics(
   const [
     categoriesResult,
     subcategoriesResult,
-    transactionTagsResult,
-    transactionUsersResult,
     transactionTypesResult,
+    transactionTags,
+    transactionUsers,
   ] = await Promise.all([
     // Query 1: Categorías
     categoryIds.length > 0
@@ -715,13 +735,27 @@ export async function getTransactionsForAnalytics(
           .select('id_type, ds_type')
           .in('id_type', typeIds)
       : Promise.resolve({ data: [] }),
+    
+    // Query 3: Tags de transacciones (en chunks para evitar límites de URL)
+    fetchInChunks(transactionIds, 50, (chunk) =>
+      supabase
+        .from('pml_rel_transaction_tag')
+        .select('id_transaction, id_tag')
+        .in('id_transaction', chunk)
+    ),
+    
+    // Query 4: Usuarios de transacciones (en chunks para evitar límites de URL)
+    fetchInChunks(transactionIds, 50, (chunk) =>
+      supabase
+        .from('pml_rel_transaction_user')
+        .select('id_transaction, id_user, ft_amount_user')
+        .in('id_transaction', chunk)
+    ),
   ])
 
   // Procesar resultados
   const categories = categoriesResult.data || []
   const subcategories = subcategoriesResult.data || []
-  const transactionTags = transactionTagsResult.data || []
-  const transactionUsers = transactionUsersResult.data || []
   const transactionTypes = transactionTypesResult.data || []
 
   // Crear mapas para acceso rápido
