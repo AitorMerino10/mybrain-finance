@@ -119,7 +119,7 @@ export default function TransactionForm({
     }
 
     loadInitialData()
-  }, [transactionType, idFamily])
+  }, [transactionType, idFamily, idUser])
 
   // Cargar subcategorías cuando se selecciona una categoría (solo para Expense)
   useEffect(() => {
@@ -164,7 +164,7 @@ export default function TransactionForm({
     }
 
     loadSubcategories()
-  }, [formData.id_category, transactionType])
+  }, [formData.id_category, formData.id_subcategory, transactionType])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -278,6 +278,11 @@ export default function TransactionForm({
             <label className="block text-sm font-semibold text-gray-700">
               Personas afectadas * {loadingFamilyMembers && <span className="text-gray-400 font-normal">(Cargando...)</span>}
             </label>
+            <div className="rounded-lg bg-[#90EBD6]/10 border border-[#90EBD6]/30 p-3 mb-2">
+              <p className="text-xs text-gray-600">
+                💡 <strong>Gastos compartidos:</strong> Si seleccionas varias personas, el importe se dividirá automáticamente a partes iguales entre todas.
+              </p>
+            </div>
             <div className="space-y-2">
               {familyMembers.map((member) => {
                 const isSelected = formData.selectedUsers.includes(member.id_user)

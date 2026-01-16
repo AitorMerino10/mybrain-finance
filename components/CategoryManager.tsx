@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   getAllCategoriesByFamily,
@@ -42,11 +42,7 @@ export default function CategoryManager({ idFamily }: CategoryManagerProps) {
     idSubcategory: string
   } | null>(null)
 
-  useEffect(() => {
-    loadCategories()
-  }, [idFamily, categoryType])
-
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     try {
       setLoading(true)
       const allCategories = await getAllCategoriesByFamily(supabase, idFamily)
@@ -73,7 +69,11 @@ export default function CategoryManager({ idFamily }: CategoryManagerProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [idFamily, categoryType])
+
+  useEffect(() => {
+    loadCategories()
+  }, [loadCategories])
 
   const handleCategoryCreated = async (newCategory: Category) => {
     // Añadir la nueva categoría directamente sin recargar todo

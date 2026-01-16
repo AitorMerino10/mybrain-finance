@@ -172,7 +172,7 @@ export default function AnalyticsPageClient({
   const availableMonths = getAvailableMonths()
 
   // Cargar todos los datos al inicio (sin filtros)
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     setLoading(true)
     try {
       const filtersToUse: AnalyticsFilters = {
@@ -203,7 +203,7 @@ export default function AnalyticsPageClient({
     } finally {
       setLoading(false)
     }
-  }
+  }, [idFamily])
 
   // Aplicar filtros en el frontend
   const applyFilters = useCallback(() => {
@@ -310,7 +310,7 @@ export default function AnalyticsPageClient({
   // Cargar datos iniciales
   useEffect(() => {
     loadAllData()
-  }, [])
+  }, [loadAllData])
 
   // Aplicar filtros cuando cambian
   useEffect(() => {

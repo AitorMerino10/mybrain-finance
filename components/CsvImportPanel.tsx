@@ -204,7 +204,7 @@ export default function CsvImportPanel({
     if (!currentFamily) return
     const defaultUsers = currentFamily.members.map(m => m.id_user)
     setSelectedUserIds(defaultUsers)
-  }, [currentFamily?.id_family])
+  }, [currentFamily])
 
   const handleFileChange = async (file: File | null) => {
     setRows([])
@@ -382,7 +382,7 @@ export default function CsvImportPanel({
             checked={useCsvUsers}
             onChange={(e) => setUseCsvUsers(e.target.checked)}
           />
-          Usar columna "personas_afectadas" si existe en el CSV
+          Usar columna &quot;personas_afectadas&quot; si existe en el CSV
         </label>
         <button
           type="button"

@@ -90,7 +90,7 @@ export default function EditTransactionModal({
       }
     }
     loadData()
-  }, [idFamily, transactionType])
+  }, [idFamily, transactionType, formData.id_category])
 
   // Cargar subcategorías cuando cambia la categoría
   useEffect(() => {
@@ -114,7 +114,7 @@ export default function EditTransactionModal({
       }
     }
     loadSubcategories()
-  }, [formData.id_category, transactionType])
+  }, [formData.id_category, formData.id_subcategory, transactionType])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
