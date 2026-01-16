@@ -737,20 +737,22 @@ export async function getTransactionsForAnalytics(
       : Promise.resolve({ data: [] }),
     
     // Query 3: Tags de transacciones (en chunks para evitar límites de URL)
-    fetchInChunks(transactionIds, 50, (chunk) =>
-      supabase
+    fetchInChunks(transactionIds, 50, async (chunk) => {
+      const { data, error } = await supabase
         .from('pml_rel_transaction_tag')
         .select('id_transaction, id_tag')
         .in('id_transaction', chunk)
-    ),
+      return { data, error }
+    }),
     
     // Query 4: Usuarios de transacciones (en chunks para evitar límites de URL)
-    fetchInChunks(transactionIds, 50, (chunk) =>
-      supabase
+    fetchInChunks(transactionIds, 50, async (chunk) => {
+      const { data, error } = await supabase
         .from('pml_rel_transaction_user')
         .select('id_transaction, id_user, ft_amount_user')
         .in('id_transaction', chunk)
-    ),
+      return { data, error }
+    }),
   ])
 
   // Procesar resultados
