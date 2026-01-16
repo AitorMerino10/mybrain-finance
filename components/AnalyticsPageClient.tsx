@@ -1005,23 +1005,7 @@ export default function AnalyticsPageClient({
                       </BarChart>
                     )}
                   </ResponsiveContainer>
-                  {chartViewType === 'income-expense-benefit' && benefitChartMode === 'bar' && (
-                    <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-gray-600">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: benefitColor }} />
-                        Beneficio
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: expenseColor }} />
-                        Gastos
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: incomeColor }} />
-                        Ingresos
-                      </div>
-                    </div>
-                  )}
-                  {chartViewType === 'income-expense-benefit' && benefitChartMode === 'line' && (
+                  {chartViewType === 'income-expense-benefit' && (
                     <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-gray-600">
                       <div className="flex items-center gap-2">
                         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: benefitColor }} />
