@@ -716,18 +716,6 @@ export async function getTransactionsForAnalytics(
           .in('id_subcategory', subcategoryIds)
       : Promise.resolve({ data: [] }),
     
-    // Query 3: Tags de transacciones
-    supabase
-      .from('pml_rel_transaction_tag')
-      .select('id_transaction, id_tag')
-      .in('id_transaction', transactionIds),
-    
-    // Query 4: Usuarios de transacciones
-    supabase
-      .from('pml_rel_transaction_user')
-      .select('id_transaction, id_user, ft_amount_user')
-      .in('id_transaction', transactionIds),
-    
     // Query 5: Tipos de transacción (NUEVO - evita queries N+1)
     typeIds.length > 0
       ? supabase
