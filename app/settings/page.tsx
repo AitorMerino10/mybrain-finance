@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import CategoryManager from '@/components/CategoryManager'
+import HelpTooltip from '@/components/HelpTooltip'
 import { getUserFamilies } from '@/lib/family'
 import Link from 'next/link'
 
@@ -60,11 +61,9 @@ export default async function SettingsPage({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                 </svg>
               </Link>
-              <div>
+              <div className="flex items-center gap-2">
                 <h1 className="text-2xl sm:text-3xl font-bold italic text-gray-900 mb-1.5">Configuración</h1>
-                <p className="text-sm sm:text-base text-gray-500">
-                  Gestiona tus categorías y subcategorías
-                </p>
+                <HelpTooltip content="Crea todo lo que necesites y ordénalo a tu gusto para encontrarlas antes." />
               </div>
             </div>
 

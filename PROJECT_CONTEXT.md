@@ -822,7 +822,277 @@ AnalyticsPageClient (Client Component)
 
 ---
 
+## 🔐 Portal de Administración
+
+### **Descripción General**
+
+Sistema completo de administración para gestionar familias, usuarios y peticiones de acceso. Accesible solo para el administrador de la aplicación.
+
+**Ruta**: `/admin`  
+**Acceso**: Solo para el administrador de la aplicación (email: `aitormerino10@gmail.com`, id_user: `bd65acd3-9c4c-4e84-a7e4-93e376773a49`)
+
+### **Arquitectura del Portal**
+
+#### **Estructura de Archivos**
+```
+app/admin/
+  └── page.tsx                    # Server Component - Autenticación y carga inicial
+
+components/
+  ├── AdminPageClient.tsx         # Client Component - UI y lógica del portal
+  └── FamilyRequestForm.tsx       # Formulario para solicitar acceso
+
+app/api/admin/
+  ├── approve-request/route.ts    # Aprobar/rechazar peticiones
+  ├── get-requests/route.ts       # Obtener peticiones
+  └── manage-user/route.ts        # Gestión de usuarios (crear, borrar, añadir/quitar de familias)
+
+app/api/family-requests/
+  └── route.ts                    # Crear y obtener peticiones de familias
+
+lib/
+  └── admin.ts                    # Funciones de administración
+```
+
+### **Tabla de Peticiones: `pml_dim_family_request`**
+
+Nueva tabla para gestionar peticiones de acceso:
+
+**Estructura:**
+```sql
+CREATE TABLE pml_dim_family_request (
+  id_request UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_user UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  ds_request_type TEXT NOT NULL CHECK (ds_request_type IN ('create_family', 'join_family')),
+  ds_family_name TEXT,                    -- Nombre de la familia si es create_family
+  id_family UUID REFERENCES pml_dim_family(id_family) ON DELETE CASCADE, -- ID de familia si es join_family
+  js_requested_users JSONB NOT NULL DEFAULT '[]'::jsonb, -- Array de objetos con email, name de usuarios a invitar
+  ds_comment TEXT,                        -- Comentario opcional del solicitante
+  ds_status TEXT NOT NULL DEFAULT 'pending' CHECK (ds_status IN ('pending', 'approved', 'rejected')),
+  id_approved_by UUID REFERENCES auth.users(id) ON DELETE SET NULL, -- Quien aprobó/rechazó
+  dt_created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  dt_updated TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Tipos de Petición:**
+- `create_family`: Usuario solicita crear una nueva familia (proporciona nombre y usuarios a invitar)
+- `join_family`: Usuario solicita unirse a una familia existente
+
+**Estados:**
+- `pending`: Petición pendiente de aprobación
+- `approved`: Petición aprobada (familia/usuarios creados)
+- `rejected`: Petición rechazada
+
+### **Funciones de Administración (`lib/admin.ts`)**
+
+#### **Verificación de Admin**
+```typescript
+isAppAdmin(supabase: SupabaseClient<Database>, idUser: string, email: string | null): boolean
+```
+- Verifica si un usuario es el administrador de la aplicación
+- Compara `idUser` y `email` con constantes `APP_ADMIN_ID` y `APP_ADMIN_EMAIL`
+
+#### **Gestión de Familias**
+```typescript
+getAllFamiliesWithMembers(supabase: SupabaseClient<Database>): Promise<FamilyWithMembers[]>
+```
+- Obtiene todas las familias con sus miembros asociados
+- Incluye información de usuarios y relaciones
+
+#### **Gestión de Peticiones**
+```typescript
+createFamilyRequest(...): Promise<FamilyRequest>
+getAllFamilyRequests(supabase: SupabaseClient<Database>, status?: RequestStatus): Promise<FamilyRequest[]>
+getPendingRequestsForFamily(supabase: SupabaseClient<Database>, idFamily: string): Promise<FamilyRequest[]>
+approveCreateFamilyRequest(requestId: string): Promise<void>
+approveJoinFamilyRequest(requestId: string): Promise<void>
+rejectFamilyRequest(requestId: string): Promise<void>
+```
+
+**Características:**
+- `getAllFamilyRequests` enriquece emails desde `auth.users` si el usuario no está en `pml_dim_user` (para mostrar peticiones de usuarios nuevos)
+- `approveCreateFamilyRequest`: Crea la familia, usuarios nuevos (si no existen) y relaciones. Los usuarios solo se crean al aprobar, no al solicitar.
+- `approveJoinFamilyRequest`: Añade el usuario a la familia existente
+
+#### **Gestión de Usuarios**
+```typescript
+getAllUsers(supabase: SupabaseClient<Database>): Promise<UserWithFamilies[]>
+createUserInApp(email: string, name?: string | null): Promise<User>
+deleteUserCompletely(idUser: string): Promise<void>
+addUserToFamily(idUser: string, idFamily: string): Promise<void>
+removeUserFromFamily(idUser: string, idFamily: string): Promise<void>
+```
+
+**Características:**
+- `createUserInApp`: Crea usuario en Supabase Auth y en `pml_dim_user`
+- `deleteUserCompletely`: Elimina usuario de Auth y de `pml_dim_user` (cascada)
+- `addUserToFamily` / `removeUserFromFamily`: Gestionan relaciones en `pml_rel_user_family`
+
+### **Componente Cliente: `AdminPageClient`**
+
+#### **Tabs del Portal**
+1. **Familias**: Lista todas las familias con sus miembros
+   - Botones para añadir/quitar miembros de cada familia
+   - Visualización de miembros actuales
+
+2. **Usuarios**: Lista todos los usuarios del sistema
+   - Botón para crear nuevo usuario (modal con email y nombre)
+   - Botón para eliminar usuario
+   - Visualización de familias asociadas a cada usuario
+   - Botones para añadir/quitar usuarios de familias
+
+3. **Peticiones Pendientes**: Peticiones con estado `pending`
+   - Información del solicitante (nombre, email)
+   - Tipo de petición (crear familia / unirse a familia)
+   - Comentario opcional
+   - Botones para aprobar/rechazar
+   - Al aprobar `create_family`: se crea la familia y usuarios
+   - Al aprobar `join_family`: se añade el usuario a la familia
+
+4. **Historial**: Peticiones aprobadas o rechazadas
+   - Muestra todas las peticiones procesadas
+   - Incluye información de quién aprobó/rechazó y cuándo
+
+#### **Diseño**
+- **Mobile-First**: Diseño optimizado para móvil con colores pastel
+- **Misma fuente**: Usa la misma fuente que el resto de la aplicación
+- **Colores pastel**: Paleta de colores suaves y agradables
+
+### **Página de Usuarios No Autorizados (`/unauthorized`)**
+
+#### **Rediseño Mejorado**
+- **Mensaje de bienvenida**: Mensaje acogedor en lugar de mensaje "agresivo"
+- **Explicación del proceso**: Pasos claros para solicitar acceso
+- **Valor de la app**: Destaca los beneficios de la aplicación
+- **Opciones claras**: Explica las dos opciones disponibles:
+  1. Solicitar crear una nueva familia
+  2. Solicitar unirse a una familia existente
+
+#### **Componente `UnauthorizedPageClient`**
+- Integra `FamilyRequestForm` para enviar peticiones
+- Muestra mensaje "Petición Enviada" si ya existe una petición pendiente
+- Diseño atractivo y no intimidante
+
+### **Navegación y Acceso**
+
+#### **Botón Admin en Navigation**
+- **Desktop**: Visible debajo de "Configuración" en el sidebar
+- **Mobile**: Visible en la barra superior, al lado del icono de perfil
+- **Icono**: Corona (SVG personalizado)
+- **Visibilidad**: Solo para el administrador de la aplicación
+
+#### **Selector de Familias**
+- **Problema resuelto**: El desplegable de familias en desktop ahora funciona correctamente
+- **Solución**: Prevención de propagación en eventos `onClick` y `onMouseDown`
+- **Evento de cierre**: Cambiado de `mousedown` a `click` para mejor UX
+
+---
+
+## 💰 Sistema de Cálculos Financieros con `ft_amount_user`
+
+### **Cambio Fundamental**
+
+Todos los cálculos financieros ahora utilizan `ft_amount_user` de `pml_rel_transaction_user` en lugar de `ft_amount` de `gnp_fct_transactions` cuando se filtra por usuario(s).
+
+### **Lógica de Cálculo**
+
+#### **Home Page**
+- **KPIs**: Usan `ft_amount_user` del usuario logueado
+- **Gastos por categoría**: Usan `ft_amount_user` del usuario logueado
+- **Top 5 gastos**: Usan `ft_amount_user` del usuario logueado
+- **Filtro implícito**: Siempre filtra por el usuario logueado
+
+#### **Analítica**
+- **Filtro por defecto**: Usuario logueado
+- **Filtro manual**: Permite seleccionar uno o varios usuarios
+- **Cálculos**: Todos usan `ft_amount_user` de los usuarios filtrados
+- **Sección Detalle**:
+  - **Columna "Importe"**: Muestra `ft_amount` (total de la transacción)
+  - **Columna "Importe por persona"**: Muestra `ft_amount_user` (cantidad por persona)
+  - **Lógica de filas**: Si hay múltiples usuarios filtrados y tienen el mismo `ft_amount_user`, muestra una sola fila. Si difieren, muestra una fila por cada `ft_amount_user` distinto.
+
+#### **Comparador**
+- **Casuísticas**: Usa `ft_amount_user` de los usuarios asignados a cada casuística
+- **Sin usuarios asignados**: Suma todos los `ft_amount_user` de la transacción
+
+### **Funciones Helper**
+
+#### **`recalculateAmountForUsers()`**
+```typescript
+recalculateAmountForUsers(transaction: TransactionWithRelations, userIds: string[] | null): number
+```
+- Suma `ft_amount_user` para los usuarios especificados
+- Si `userIds` es `null`, suma todos los `ft_amount_user` de la transacción
+
+#### **`applyUserFilterToTransactions()`**
+```typescript
+applyUserFilterToTransactions(transactions: TransactionWithRelations[], filteredUserIds?: string[] | null): TransactionWithRelations[]
+```
+- Ajusta `ft_amount` de cada transacción basándose en `ft_amount_user` de los usuarios filtrados
+- Excluye transacciones con importe recalculado de 0
+- Retorna nuevo array (no muta el original)
+
+### **Implementación en Componentes**
+
+#### **`HomePageClient.tsx`**
+- Filtra transacciones por usuario logueado
+- Aplica `applyUserFilterToTransactions` antes de calcular KPIs y resúmenes
+
+#### **`AnalyticsPageClient.tsx`**
+- Mantiene dos arrays separados:
+  - `filtered`: Para cálculos (con `ft_amount` ajustado)
+  - `filteredForDetails`: Para sección detalle (con `ft_amount` original)
+- Pasa `filteredUserIds` a `DetailsSection` para calcular `ft_amount_user` correctamente
+
+#### **`DetailsSection`**
+- Recibe `filteredUserIds?: string[] | null` como prop
+- Calcula `ft_amount_user` basándose en usuarios filtrados
+- Expande transacciones en múltiples filas si hay `ft_amount_user` distintos
+
+---
+
+## 🎨 Mejoras de UI/UX
+
+### **Icono de Corona para Admin**
+- **Implementación**: SVG personalizado de corona
+- **Ubicación**: Botón Admin en Navigation (móvil y desktop)
+- **Diseño**: Corona simple y reconocible
+
+### **Corrección del Desplegable de Familias**
+- **Problema**: El menú desplegable no se abría en desktop
+- **Causa**: Evento `handleClickOutside` se ejecutaba antes del click en el botón
+- **Solución**:
+  - Añadido `onMouseDown` con `preventDefault()` y `stopPropagation()` en botones que abren menús
+  - Cambiado evento de cierre de `mousedown` a `click` para mejor control
+  - Prevención de propagación en botones de opciones del menú
+
+### **Tooltips en Pie Charts (Mobile)**
+- **Problema**: Duplicación de tooltips en móvil
+- **Solución**:
+  - Recharts `Tooltip` deshabilitado en dispositivos táctiles
+  - Tooltip personalizado con botón de cierre
+  - Overlay invisible para cerrar al tocar fuera
+
+---
+
+## 📋 Variables de Entorno Adicionales
+
+```env
+SUPABASE_SERVICE_ROLE_KEY=tu_clave_de_servicio
+```
+
+**Uso**: Requerida para operaciones administrativas que necesitan bypass de RLS (Row Level Security):
+- Crear usuarios en Supabase Auth
+- Eliminar usuarios
+- Obtener emails de usuarios desde `auth.users`
+- Gestionar familias y relaciones
+
+**Seguridad**: Esta clave solo debe usarse en Route Handlers del servidor, nunca en el cliente.
+
+---
+
 **Última actualización**: Diciembre 2024
-**Versión del proyecto**: v0.4.0 (Analítica Avanzada con Comparador Temporal y Análisis Mensual Detallado)
+**Versión del proyecto**: v0.5.0 (Portal de Administración y Sistema de Cálculos con `ft_amount_user`)
 
 

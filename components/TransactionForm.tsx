@@ -22,6 +22,7 @@ import type {
 import CategoryModal from './CategoryModal'
 import SubcategoryModal from './SubcategoryModal'
 import TagModal from './TagModal'
+import HelpTooltip from './HelpTooltip'
 
 interface TransactionFormProps {
   transactionType: TransactionTypeName
@@ -121,16 +122,9 @@ export default function TransactionForm({
     loadInitialData()
   }, [transactionType, idFamily, idUser])
 
-  // Cargar subcategorías cuando se selecciona una categoría (solo para Expense)
+  // Cargar subcategorías cuando se selecciona una categoría (income opcional)
   useEffect(() => {
     const loadSubcategories = async () => {
-      // Solo cargar subcategorías si es Expense
-      if (transactionType !== 'Expense') {
-        setSubcategories([])
-        setFormData((prev) => ({ ...prev, id_subcategory: null }))
-        return
-      }
-
       if (!formData.id_category) {
         setSubcategories([])
         setFormData((prev) => ({ ...prev, id_subcategory: null }))
@@ -280,7 +274,7 @@ export default function TransactionForm({
             </label>
             <div className="rounded-lg bg-[#90EBD6]/10 border border-[#90EBD6]/30 p-3 mb-2">
               <p className="text-xs text-gray-600">
-                💡 <strong>Gastos compartidos:</strong> Si seleccionas varias personas, el importe se dividirá automáticamente a partes iguales entre todas.
+                💡 <strong>Transacciones compartidas:</strong> Si seleccionas varias personas, el importe se dividirá automáticamente a partes iguales entre todas.
               </p>
             </div>
             <div className="space-y-2">
@@ -427,9 +421,10 @@ export default function TransactionForm({
         <div className="space-y-2">
           <label
             htmlFor="category"
-            className="block text-sm font-semibold text-gray-700"
+            className="flex items-center gap-2 text-sm font-semibold text-gray-700"
           >
             Categoría *
+            <HelpTooltip content="Puedes crear más desde aquí o desde configuración y ordenarlas a tu gusto." />
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none">
@@ -473,14 +468,14 @@ export default function TransactionForm({
           )}
         </div>
 
-        {/* Mostrar subcategoría solo para Expense */}
-        {transactionType === 'Expense' && formData.id_category && (
+        {formData.id_category && (
           <div className="space-y-2">
             <label
               htmlFor="subcategory"
-              className="block text-sm font-semibold text-gray-700"
+              className="flex items-center gap-2 text-sm font-semibold text-gray-700"
             >
               Subcategoría {loadingSubcategories && <span className="text-gray-400 font-normal">(Cargando...)</span>}
+              <HelpTooltip content="Puedes crear más desde aquí o desde configuración y ordenarlas a tu gusto." />
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none">
@@ -562,9 +557,10 @@ export default function TransactionForm({
           <div className="space-y-2">
             <label
               htmlFor="monthDeclared"
-              className="block text-sm font-semibold text-gray-700"
+              className="flex items-center gap-2 text-sm font-semibold text-gray-700"
             >
               Mes Declarado *
+              <HelpTooltip content="Este es el mes donde se contabilizará la transacción. Puedes cambiarlo en caso de no cobrar los primeros de mes." />
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -594,7 +590,7 @@ export default function TransactionForm({
               />
             </div>
             <p className="text-xs text-gray-500">
-              Formato: MM-YYYY
+              Formato: MM-YYYY.
             </p>
             {errors.ds_month_declared && (
               <p className="mt-1 text-sm text-red-600 font-medium">{errors.ds_month_declared}</p>
@@ -605,9 +601,10 @@ export default function TransactionForm({
         <div>
           <label
             htmlFor="tag"
-            className="block text-sm font-medium text-gray-700"
+            className="flex items-center gap-2 text-sm font-medium text-gray-700"
           >
             Tag {loadingTags && '(Cargando...)'}
+            <HelpTooltip content="Agrupa gastos para luego poder analizarlos (un viaje, todas las bodas de tus amigos, etc)." />
           </label>
           <div className="mt-1 flex gap-2">
             <select

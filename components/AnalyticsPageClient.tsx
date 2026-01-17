@@ -25,6 +25,7 @@ import { getSubcategoriesByCategory } from '@/lib/categories'
 import { formatCurrency, formatDate } from '@/lib/format'
 import Link from 'next/link'
 import EditTransactionModal from './EditTransactionModal'
+import HelpTooltip from './HelpTooltip'
 import {
   BarChart,
   Bar,
@@ -1754,7 +1755,14 @@ function ComparatorSection({
                   <div className="space-y-6">
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Comparador de Casuísticas</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-900">
+              Comparador de Casuísticas
+              <span className="ml-2 inline-flex">
+                <HelpTooltip content="Compara gastos entre familiares, facturas, hobbies, tags, etc." />
+              </span>
+            </h2>
+          </div>
           <button
             onClick={addCase}
             className="px-4 py-2 rounded-lg bg-[#90EBD6] text-white font-medium hover:bg-[#0d9488] transition-colors"

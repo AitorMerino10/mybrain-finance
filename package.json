@@ -17,6 +17,7 @@
     "next": "^14",
     "react": "^18",
     "react-dom": "^18",
+    "react-joyride": "^2.9.3",
     "recharts": "^3.6.0",
     "tailwind-merge": "^3.4.0"
   },

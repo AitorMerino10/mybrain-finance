@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import CircularLoader from '@/components/CircularLoader'
 
 export default function AuthCallback() {
-  const [status, setStatus] = useState('Procesando autenticación...')
   const hasProcessed = useRef(false)
 
   useEffect(() => {
@@ -23,7 +23,6 @@ export default function AuthCallback() {
       if (existingSession) {
         console.log('✅ Sesión ya activa encontrada, redirigiendo...')
         hasProcessed.current = true
-        setStatus('Redirigiendo al dashboard...')
         setTimeout(() => {
           window.location.href = '/'
         }, 500)
@@ -40,14 +39,12 @@ export default function AuthCallback() {
           if (retrySession) {
             console.log('✅ Sesión encontrada en segundo intento')
             hasProcessed.current = true
-            setStatus('Redirigiendo al dashboard...')
             setTimeout(() => {
               window.location.href = '/'
             }, 500)
           } else {
             console.error('❌ No hay hash ni sesión activa')
             hasProcessed.current = true
-            setStatus('Error: No se encontraron tokens')
             setTimeout(() => {
               window.location.href = '/login?error=no_tokens'
             }, 2000)
@@ -69,7 +66,6 @@ export default function AuthCallback() {
       if (error) {
         console.error('❌ Error en callback:', error, errorDescription)
         hasProcessed.current = true
-        setStatus('Error en la autenticación')
         setTimeout(() => {
           window.location.href = `/login?error=${encodeURIComponent(errorDescription || error)}`
         }, 2000)
@@ -79,7 +75,6 @@ export default function AuthCallback() {
       if (accessToken && refreshToken) {
         hasProcessed.current = true
         console.log('✅ Tokens encontrados, estableciendo sesión...')
-        setStatus('Estableciendo sesión...')
         
         // Establecer la sesión usando los tokens
         const { data, error: sessionError } = await supabase.auth.setSession({
@@ -89,7 +84,6 @@ export default function AuthCallback() {
         
         if (sessionError) {
           console.error('❌ Error al establecer sesión:', sessionError)
-          setStatus('Error al establecer sesión')
           setTimeout(() => {
             window.location.href = `/login?error=${encodeURIComponent(sessionError.message)}`
           }, 2000)
@@ -107,7 +101,6 @@ export default function AuthCallback() {
           const userEmail = data.user.email || ''
           
           console.log('🔄 Creando usuario en pml_dim_user...')
-          setStatus('Creando perfil de usuario...')
           
           const { error: insertError } = await supabase
             .from('pml_dim_user')
@@ -134,7 +127,6 @@ export default function AuthCallback() {
           window.history.replaceState({}, document.title, '/auth/callback')
           
           // Esperar un momento para que las cookies se establezcan
-          setStatus('Redirigiendo al dashboard...')
           console.log('🔄 Esperando antes de redirigir...')
           
           // Usar window.location.href para forzar recarga completa y que el middleware lea las cookies
@@ -144,7 +136,6 @@ export default function AuthCallback() {
           }, 1000)
         } else {
           console.error('❌ No se pudo establecer la sesión')
-          setStatus('Error: No se pudo establecer la sesión')
           setTimeout(() => {
             window.location.href = '/login?error=session_failed'
           }, 2000)
@@ -152,7 +143,6 @@ export default function AuthCallback() {
       } else {
         console.error('❌ No se encontraron tokens en el hash')
         hasProcessed.current = true
-        setStatus('Error: No se encontraron tokens')
         setTimeout(() => {
           window.location.href = '/login?error=no_tokens'
         }, 2000)
@@ -163,11 +153,8 @@ export default function AuthCallback() {
   }, [])
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold">{status}</h2>
-        <p className="mt-2 text-gray-600">Por favor espera...</p>
-      </div>
+    <div className="flex min-h-screen items-center justify-center bg-slate-900">
+      <CircularLoader size="lg" />
     </div>
   )
 }

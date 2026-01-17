@@ -2,11 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { calculateMonthlySummary, calculateCategorySummary, type TransactionWithRelations } from '@/lib/transactions'
+import { supabase } from '@/lib/supabase'
+import { calculateMonthlySummary, calculateCategorySummary, deleteTransaction, type TransactionWithRelations } from '@/lib/transactions'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import TransactionForm from './TransactionForm'
 import type { TransactionTypeName } from '@/types/transactions'
 import { formatCurrency, formatDate } from '@/lib/format'
+import { getFamilyMembers, type FamilyMember } from '@/lib/family'
+import { getAllCategoriesByFamily } from '@/lib/categories'
+import { getTagsByFamily } from '@/lib/tags'
+import type { Category, Tag } from '@/types/transactions'
+import EditTransactionModal from './EditTransactionModal'
 
 interface HomePageClientProps {
   idFamily: string
@@ -45,9 +51,14 @@ export default function HomePageClient({
   const [currentMonthExpenses, setCurrentMonthExpenses] = useState(0)
   const [expenseCategories, setExpenseCategories] = useState<Array<{ id_category: string; ds_category: string; total: number; percentage: number }>>([])
   const [top5Expenses, setTop5Expenses] = useState<TransactionWithRelations[]>([])
+  const [last7DaysExpenses, setLast7DaysExpenses] = useState<TransactionWithRelations[]>([])
   const [activeTooltip, setActiveTooltip] = useState<{ x: number; y: number; data: any } | null>(null)
   const [showTransactionForm, setShowTransactionForm] = useState(showNewTransaction)
   const [selectedTransactionType, setSelectedTransactionType] = useState<TransactionTypeName>('Expense')
+  const [editingTransaction, setEditingTransaction] = useState<TransactionWithRelations | null>(null)
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
 
   // Sincronizar con prop
   useEffect(() => {
@@ -60,27 +71,35 @@ export default function HomePageClient({
         setLoading(true)
 
         // Obtener todas las transacciones
-        const response = await fetch('/api/analytics/transactions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            idFamily,
-            idUsers: [idUser],
-            idCategories: null,
-            idSubcategories: null,
-            idTags: null,
-            monthsDeclared: null,
-            dateFrom: null,
-            dateTo: null,
-            startMonth: null,
-            endMonth: null,
+        const [transactionsResponse, members, categoriesData, tagsData] = await Promise.all([
+          fetch('/api/analytics/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idFamily,
+              idUsers: [idUser],
+              idCategories: null,
+              idSubcategories: null,
+              idTags: null,
+              monthsDeclared: null,
+              dateFrom: null,
+              dateTo: null,
+              startMonth: null,
+              endMonth: null,
+            }),
           }),
-        })
-        const data = await response.json()
-        if (!response.ok) {
+          getFamilyMembers(supabase, idFamily),
+          getAllCategoriesByFamily(supabase, idFamily),
+          getTagsByFamily(supabase, idFamily),
+        ])
+        const data = await transactionsResponse.json()
+        if (!transactionsResponse.ok) {
           throw new Error(data.error || 'Error al cargar transacciones')
         }
         const transactions = (data.transactions || []) as TransactionWithRelations[]
+        setFamilyMembers(members)
+        setCategories(categoriesData)
+        setTags(tagsData)
 
         // Obtener mes actual y anterior
         const currentMonth = getCurrentMonth()
@@ -113,6 +132,16 @@ export default function HomePageClient({
           .sort((a, b) => (b.ft_amount || 0) - (a.ft_amount || 0))
           .slice(0, 5)
         setTop5Expenses(top5)
+
+        // Gastos últimos 7 días (incluido hoy) ordenados por fecha descendente
+        const today = new Date()
+        const startDate = new Date(today)
+        startDate.setDate(today.getDate() - 6)
+        const last7Days = transactions
+          .filter(t => t.transactionType === 'Expense')
+          .filter(t => new Date(t.dt_date) >= startDate)
+          .sort((a, b) => new Date(b.dt_date).getTime() - new Date(a.dt_date).getTime())
+        setLast7DaysExpenses(last7Days)
       } catch (error) {
         console.error('Error al cargar datos:', error)
       } finally {
@@ -122,6 +151,19 @@ export default function HomePageClient({
 
     loadData()
   }, [idFamily, idUser])
+
+  const handleDeleteTransaction = async (idTransaction: string) => {
+    if (!confirm('¿Estás seguro de borrar esta transacción?')) {
+      return
+    }
+    try {
+      await deleteTransaction(supabase, idTransaction)
+      setTimeout(() => window.location.reload(), 100)
+    } catch (error) {
+      console.error('Error al borrar transacción:', error)
+      alert('Error al borrar la transacción. Por favor, inténtalo de nuevo.')
+    }
+  }
 
   // Skeleton component
   const SkeletonCard = () => (
@@ -575,6 +617,26 @@ export default function HomePageClient({
                           <p className="text-sm lg:text-base font-bold text-gray-900">
                             {formatCurrency(expense.ft_amount || 0)}
                           </p>
+                          <div className="mt-1 flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setEditingTransaction(expense)}
+                              className="text-gray-600 hover:text-gray-900 transition-colors"
+                              title="Editar"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTransaction(expense.id_transaction)}
+                              className="text-red-500 hover:text-red-700 transition-colors"
+                              title="Borrar"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                              </svg>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -640,12 +702,120 @@ export default function HomePageClient({
                   <p className="text-lg font-bold text-gray-900">
                     {formatCurrency(expense.ft_amount || 0)}
                   </p>
+                  <div className="mt-1 flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => setEditingTransaction(expense)}
+                      className="text-gray-600 hover:text-gray-900 transition-colors"
+                      title="Editar"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTransaction(expense.id_transaction)}
+                      className="text-red-500 hover:text-red-700 transition-colors"
+                      title="Borrar"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Gastos últimos 7 días */}
+      <div className="bg-white rounded-2xl shadow-sm border border-[#90EBD6]/20 p-6">
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-900">Gastos últimos 7 días</h2>
+          <p className="text-sm text-gray-500 mt-1">Incluye hoy</p>
+        </div>
+        {last7DaysExpenses.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-sm text-gray-500">No hay gastos en los últimos 7 días</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {last7DaysExpenses.map((expense) => (
+              <div
+                key={expense.id_transaction}
+                className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-all duration-200"
+              >
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {expense.ds_comments || 'Sin comentario'}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-xs text-gray-500">
+                        {expense.category?.ds_category || 'Sin categoría'}
+                      </span>
+                      {expense.subcategory && (
+                        <>
+                          <span className="text-xs text-gray-400">•</span>
+                          <span className="text-xs text-gray-500">
+                            {expense.subcategory.ds_subcategory}
+                          </span>
+                        </>
+                      )}
+                      <span className="text-xs text-gray-400">•</span>
+                      <span className="text-xs text-gray-500">
+                        {formatDate(expense.dt_date, 'long')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-shrink-0 text-right ml-4">
+                  <p className="text-lg font-bold text-gray-900">
+                    {formatCurrency(expense.ft_amount || 0)}
+                  </p>
+                  <div className="mt-1 flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => setEditingTransaction(expense)}
+                      className="text-gray-600 hover:text-gray-900 transition-colors"
+                      title="Editar"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTransaction(expense.id_transaction)}
+                      className="text-red-500 hover:text-red-700 transition-colors"
+                      title="Borrar"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {editingTransaction && (
+        <EditTransactionModal
+          transaction={editingTransaction}
+          idFamily={idFamily}
+          idUser={idUser}
+          familyMembers={familyMembers}
+          categories={categories}
+          tags={tags}
+          onClose={() => setEditingTransaction(null)}
+          onSave={() => {
+            setEditingTransaction(null)
+            setTimeout(() => window.location.reload(), 100)
+          }}
+        />
+      )}
     </div>
   )
 }

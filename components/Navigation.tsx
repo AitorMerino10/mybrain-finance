@@ -330,6 +330,13 @@ export default function Navigation({
               </svg>
             </Link>
           )}
+          <Link
+            href={`/help${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
+            className="flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 transition-colors ml-2"
+            aria-label="Ayuda"
+          >
+            <span className="text-white font-bold">?</span>
+          </Link>
           {/* Profile Button - Mobile */}
           <div className="relative ml-3" ref={profileMenuRef}>
             <button
@@ -387,6 +394,13 @@ export default function Navigation({
             </svg>
           </Link>
         )}
+        <Link
+          href={`/help${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
+          className="flex items-center justify-center w-9 h-9 rounded-full bg-slate-800/80 text-white hover:bg-slate-800 transition-colors"
+          aria-label="Ayuda"
+        >
+          <span className="font-bold">?</span>
+        </Link>
         {/* Profile Button - Desktop */}
         <div className="relative" ref={profileMenuRef}>
           <button
