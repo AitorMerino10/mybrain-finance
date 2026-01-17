@@ -133,9 +133,13 @@ export async function POST(req: NextRequest) {
         ft_amount_user: u.ft_amount_user,
       }))
       const tagRel = (row.pml_rel_transaction_tag || [])[0]
+      const adjustedAmount = userFilter
+        ? users.reduce((sum: number, u: any) => sum + (u.ft_amount_user || 0), 0)
+        : row.ft_amount
 
       return {
         ...row,
+        ft_amount: adjustedAmount,
         category: row.pml_dim_category
           ? {
               id_category: row.pml_dim_category.id_category,
