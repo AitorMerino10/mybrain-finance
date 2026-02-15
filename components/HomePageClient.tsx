@@ -13,6 +13,7 @@ import { getAllCategoriesByFamily } from '@/lib/categories'
 import { getTagsByFamily } from '@/lib/tags'
 import type { Category, Tag } from '@/types/transactions'
 import EditTransactionModal from './EditTransactionModal'
+import { deleteLocalTransaction, getLocalTransactionsForHome, isLocalhost } from '@/lib/local-transactions'
 
 interface HomePageClientProps {
   idFamily: string
@@ -70,9 +71,22 @@ export default function HomePageClient({
       try {
         setLoading(true)
 
-        // Obtener todas las transacciones
-        const [transactionsResponse, members, categoriesData, tagsData] = await Promise.all([
-          fetch('/api/analytics/transactions', {
+        const [members, categoriesData, tagsData] = await Promise.all([
+          getFamilyMembers(supabase, idFamily),
+          getAllCategoriesByFamily(supabase, idFamily),
+          getTagsByFamily(supabase, idFamily),
+        ])
+        let transactions: TransactionWithRelations[] = []
+
+        if (isLocalhost()) {
+          transactions = getLocalTransactionsForHome({
+            idFamily,
+            idUser,
+            categories: categoriesData,
+            tags: tagsData,
+          })
+        } else {
+          const transactionsResponse = await fetch('/api/analytics/transactions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -87,16 +101,13 @@ export default function HomePageClient({
               startMonth: null,
               endMonth: null,
             }),
-          }),
-          getFamilyMembers(supabase, idFamily),
-          getAllCategoriesByFamily(supabase, idFamily),
-          getTagsByFamily(supabase, idFamily),
-        ])
-        const data = await transactionsResponse.json()
-        if (!transactionsResponse.ok) {
-          throw new Error(data.error || 'Error al cargar transacciones')
+          })
+          const data = await transactionsResponse.json()
+          if (!transactionsResponse.ok) {
+            throw new Error(data.error || 'Error al cargar transacciones')
+          }
+          transactions = (data.transactions || []) as TransactionWithRelations[]
         }
-        const transactions = (data.transactions || []) as TransactionWithRelations[]
         setFamilyMembers(members)
         setCategories(categoriesData)
         setTags(tagsData)
@@ -157,7 +168,11 @@ export default function HomePageClient({
       return
     }
     try {
-      await deleteTransaction(supabase, idTransaction)
+      if (isLocalhost()) {
+        deleteLocalTransaction(idTransaction)
+      } else {
+        await deleteTransaction(supabase, idTransaction)
+      }
       setTimeout(() => window.location.reload(), 100)
     } catch (error) {
       console.error('Error al borrar transacción:', error)

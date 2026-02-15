@@ -250,10 +250,14 @@ export async function updateTransaction(
     dt_date?: string
   }
 ): Promise<Transaction> {
-  // Si se actualiza dt_date, recalcular ds_month_declared
+  // Si se actualiza dt_date y NO se proporciona ds_month_declared, recalcularlo
   const updateData: TransactionUpdate = { ...transactionData }
   
-  if (transactionData.dt_date) {
+  if (
+    transactionData.dt_date &&
+    (transactionData.ds_month_declared === undefined ||
+      transactionData.ds_month_declared === null)
+  ) {
     updateData.ds_month_declared = formatMonthDeclared(transactionData.dt_date)
   }
 

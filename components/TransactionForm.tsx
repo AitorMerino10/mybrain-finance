@@ -12,6 +12,7 @@ import { getFamilyMembers, type FamilyMember } from '@/lib/family'
 import { createTransaction } from '@/lib/transactions'
 import { getTodayISOString, getCurrentMonthYear } from '@/lib/date-utils'
 import { validateTransactionForm } from '@/types/transactions'
+import { createLocalTransaction, isLocalhost } from '@/lib/local-transactions'
 import type {
   TransactionTypeName,
   Category,
@@ -188,22 +189,38 @@ export default function TransactionForm({
       const usersToAssociate =
         familyMembers.length > 1 ? formData.selectedUsers : [familyMembers[0]?.id_user].filter(Boolean)
       
-      await createTransaction(
-        supabase,
-        {
+      if (isLocalhost()) {
+        createLocalTransaction({
+          id_family: idFamily,
           id_type: formData.id_type,
           id_category: formData.id_category,
           id_subcategory: formData.id_subcategory,
           ft_amount: amountToSend,
           dt_date: formData.dt_date,
+          ds_month_declared: formData.ds_month_declared,
+          id_tag: formData.id_tag || null,
           ds_comments: formData.ds_comments || null,
-          id_family: idFamily,
-          id_user_creator: idUser,
-        },
-        formData.ds_month_declared,
-        formData.id_tag || undefined,
-        usersToAssociate.length > 0 ? usersToAssociate : undefined
-      )
+          transactionType,
+          userIds: usersToAssociate.length > 0 ? usersToAssociate : undefined,
+        })
+      } else {
+        await createTransaction(
+          supabase,
+          {
+            id_type: formData.id_type,
+            id_category: formData.id_category,
+            id_subcategory: formData.id_subcategory,
+            ft_amount: amountToSend,
+            dt_date: formData.dt_date,
+            ds_comments: formData.ds_comments || null,
+            id_family: idFamily,
+            id_user_creator: idUser,
+          },
+          formData.ds_month_declared,
+          formData.id_tag || undefined,
+          usersToAssociate.length > 0 ? usersToAssociate : undefined
+        )
+      }
 
       // Resetear formulario - mantener usuario logueado seleccionado
       const loggedInUser = familyMembers.find(m => m.id_user === idUser) || familyMembers[0]

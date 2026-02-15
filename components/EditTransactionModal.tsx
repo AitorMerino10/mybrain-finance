@@ -10,6 +10,7 @@ import { getFamilyMembers, type FamilyMember } from '@/lib/family'
 import { updateTransactionComplete } from '@/lib/transactions'
 import { convertDBFormatToMonthYear } from '@/lib/date-utils'
 import { validateTransactionForm } from '@/types/transactions'
+import { isLocalhost, updateLocalTransactionComplete } from '@/lib/local-transactions'
 import type {
   Category,
   Subcategory,
@@ -132,20 +133,36 @@ export default function EditTransactionModal({
     try {
       const amountToSend = parseFloat(amountInputValue.replace(',', '.')) || 0
       
-      await updateTransactionComplete(
-        supabase,
-        transaction.id_transaction,
-        {
+      if (isLocalhost()) {
+        updateLocalTransactionComplete({
+          id_transaction: transaction.id_transaction,
           id_category: formData.id_category || null,
           id_subcategory: formData.id_subcategory || null,
           ft_amount: amountToSend,
           dt_date: formData.dt_date,
+          ds_month_declared: formData.ds_month_declared,
+          id_tag: formData.id_tag || null,
           ds_comments: formData.ds_comments || null,
-        },
-        formData.ds_month_declared,
-        formData.id_tag || null,
-        formData.selectedUsers && formData.selectedUsers.length > 0 ? formData.selectedUsers : undefined
-      )
+          userIds: formData.selectedUsers && formData.selectedUsers.length > 0
+            ? formData.selectedUsers
+            : undefined,
+        })
+      } else {
+        await updateTransactionComplete(
+          supabase,
+          transaction.id_transaction,
+          {
+            id_category: formData.id_category || null,
+            id_subcategory: formData.id_subcategory || null,
+            ft_amount: amountToSend,
+            dt_date: formData.dt_date,
+            ds_comments: formData.ds_comments || null,
+          },
+          formData.ds_month_declared,
+          formData.id_tag || null,
+          formData.selectedUsers && formData.selectedUsers.length > 0 ? formData.selectedUsers : undefined
+        )
+      }
 
       onSave()
     } catch (err) {

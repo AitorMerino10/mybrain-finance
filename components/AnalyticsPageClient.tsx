@@ -27,6 +27,12 @@ import Link from 'next/link'
 import EditTransactionModal from './EditTransactionModal'
 import HelpTooltip from './HelpTooltip'
 import {
+  deleteLocalTransaction,
+  getLocalTransactions,
+  isLocalhost,
+  mapLocalTransactionsToRelations,
+} from '@/lib/local-transactions'
+import {
   BarChart,
   Bar,
   LineChart,
@@ -189,22 +195,40 @@ export default function AnalyticsPageClient({
         endMonth: null,
       }
       
-      const response = await fetch('/api/analytics/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(filtersToUse),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Error al cargar transacciones')
+      if (isLocalhost()) {
+        const localRaw = getLocalTransactions().filter(t => t.id_family === idFamily)
+        const categoryIds = Array.from(
+          new Set(localRaw.map(t => t.id_category).filter((id): id is string => !!id))
+        )
+        const subcategoriesList = await Promise.all(
+          categoryIds.map(id => getSubcategoriesByCategory(supabase, id))
+        )
+        const subcategories = subcategoriesList.flat()
+        const mapped = mapLocalTransactionsToRelations({
+          transactions: localRaw,
+          categories: initialCategories,
+          subcategories,
+          tags: initialTags,
+        })
+        setAllTransactionsRaw(mapped)
+      } else {
+        const response = await fetch('/api/analytics/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(filtersToUse),
+        })
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data.error || 'Error al cargar transacciones')
+        }
+        setAllTransactionsRaw(data.transactions || [])
       }
-      setAllTransactionsRaw(data.transactions || [])
     } catch (err) {
       console.error('Error al cargar datos:', err)
     } finally {
       setLoading(false)
     }
-  }, [idFamily])
+  }, [idFamily, initialCategories, initialTags])
 
   // Aplicar filtros en el frontend
   const applyFilters = useCallback(() => {
@@ -568,7 +592,11 @@ export default function AnalyticsPageClient({
     }
 
     try {
-      await deleteTransaction(supabase, idTransaction)
+      if (isLocalhost()) {
+        deleteLocalTransaction(idTransaction)
+      } else {
+        await deleteTransaction(supabase, idTransaction)
+      }
       // Recargar datos
       await loadAllData()
     } catch (err) {
