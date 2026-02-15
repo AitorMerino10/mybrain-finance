@@ -10,11 +10,14 @@ type LocalUserAmount = {
 type LocalTransaction = {
   id_transaction: string
   id_family: string
+  id_user_creator: string
   id_type: string
   id_category: string | null
   id_subcategory: string | null
   ft_amount: number
   dt_date: string
+  dt_created: string
+  dt_updated: string
   ds_month_declared: string // YYYY-MM
   id_tag: string | null
   ds_comments: string | null
@@ -77,6 +80,7 @@ function splitAmountForUsers(totalAmount: number, userIds: string[]): LocalUserA
 
 export function createLocalTransaction(params: {
   id_family: string
+  id_user_creator: string
   id_type: string
   id_category: string | null
   id_subcategory: string | null
@@ -90,14 +94,18 @@ export function createLocalTransaction(params: {
 }): LocalTransaction {
   const ds_month_declared_db = convertMonthYearToDBFormat(params.ds_month_declared)
   const users = splitAmountForUsers(params.ft_amount, params.userIds || [])
+  const now = new Date().toISOString()
   const newTransaction: LocalTransaction = {
     id_transaction: generateId(),
     id_family: params.id_family,
+    id_user_creator: params.id_user_creator,
     id_type: params.id_type,
     id_category: params.id_category,
     id_subcategory: params.id_subcategory,
     ft_amount: params.ft_amount,
     dt_date: params.dt_date,
+    dt_created: now,
+    dt_updated: now,
     ds_month_declared: ds_month_declared_db,
     id_tag: params.id_tag,
     ds_comments: params.ds_comments,
@@ -141,6 +149,7 @@ export function updateLocalTransactionComplete(params: {
     id_subcategory: params.id_subcategory,
     ft_amount: params.ft_amount,
     dt_date: params.dt_date,
+    dt_updated: new Date().toISOString(),
     ds_month_declared: dsMonthDeclared,
     id_tag: params.id_tag,
     ds_comments: params.ds_comments,

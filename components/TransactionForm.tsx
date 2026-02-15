@@ -192,6 +192,7 @@ export default function TransactionForm({
       if (isLocalhost()) {
         createLocalTransaction({
           id_family: idFamily,
+          id_user_creator: idUser,
           id_type: formData.id_type,
           id_category: formData.id_category,
           id_subcategory: formData.id_subcategory,
