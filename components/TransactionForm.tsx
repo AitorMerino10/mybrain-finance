@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   getCategoriesByType,
@@ -56,6 +56,7 @@ export default function TransactionForm({
   const [subcategories, setSubcategories] = useState<Subcategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
+  const submitModeRef = useRef<'save' | 'saveAndNew'>('save')
   const [loading, setLoading] = useState(false)
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [loadingSubcategories, setLoadingSubcategories] = useState(false)
@@ -242,7 +243,12 @@ export default function TransactionForm({
       setSubcategories([])
       setErrors({})
 
-      onSuccess?.()
+      if (submitModeRef.current === 'saveAndNew') {
+        submitModeRef.current = 'save'
+        // El formulario ya está reseteado, simplemente nos quedamos abiertos
+      } else {
+        onSuccess?.()
+      }
     } catch (err) {
       console.error('Error al crear transacción:', err)
       setErrors({
@@ -691,24 +697,33 @@ export default function TransactionForm({
         </div>
 
         {/* Botones de acción */}
-        <div className="flex flex-col-reverse sm:flex-row gap-3 pt-6 border-t border-gray-200">
+        <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-gray-200">
+          <button
+            type="submit"
+            onClick={() => { submitModeRef.current = 'saveAndNew' }}
+            disabled={loading || loadingCategories}
+            className="flex-1 px-6 py-3 text-base font-semibold text-amber-700 bg-amber-100 rounded-full ring-2 ring-amber-200 hover:bg-amber-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+          >
+            {loading && submitModeRef.current === 'saveAndNew' ? 'Guardando...' : 'Guardar y crear otra'}
+          </button>
+          <button
+            type="submit"
+            onClick={() => { submitModeRef.current = 'save' }}
+            disabled={loading || loadingCategories}
+            className="flex-1 px-6 py-3 text-base font-semibold text-blue-700 bg-blue-100 rounded-full ring-2 ring-blue-200 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+          >
+            {loading && submitModeRef.current === 'save' ? 'Guardando...' : 'Guardar y salir'}
+          </button>
           {onCancel && (
             <button
               type="button"
               onClick={onCancel}
               disabled={loading}
-              className="px-6 py-3 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 active:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 transition-colors duration-200"
+              className="flex-1 px-6 py-3 text-base font-medium text-gray-500 bg-gray-100 rounded-full hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200"
             >
               Cancelar
             </button>
           )}
-          <button
-            type="submit"
-            disabled={loading || loadingCategories}
-            className="flex-1 px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 rounded-xl hover:from-indigo-700 hover:to-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
-          >
-            {loading ? 'Guardando...' : 'Guardar Transacción'}
-          </button>
         </div>
       </form>
 
