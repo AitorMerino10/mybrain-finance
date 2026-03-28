@@ -1,4 +1,5 @@
 import type { TransactionWithRelations } from '@/lib/transactions'
+import type { FamilyMember } from '@/lib/family'
 import type { Category, Subcategory, Tag } from '@/types/transactions'
 import { convertMonthYearToDBFormat, formatMonthDeclared } from '@/lib/date-utils'
 
@@ -178,15 +179,17 @@ export function mapLocalTransactionsToRelations(params: {
   categories: Category[]
   subcategories: Subcategory[]
   tags: Tag[]
+  familyMembers?: FamilyMember[]
 }): TransactionWithRelations[] {
   const categoryMap = new Map(params.categories.map(c => [c.id_category, c]))
   const subcategoryMap = new Map(params.subcategories.map(s => [s.id_subcategory, s]))
   const tagMap = new Map(params.tags.map(t => [t.id_tag, t]))
+  const memberMap = new Map((params.familyMembers || []).map(m => [m.id_user, m.ds_user]))
 
   return params.transactions.map((t) => {
     const users = t.users.map(u => ({
       id_user: u.id_user,
-      ds_user: null,
+      ds_user: memberMap.get(u.id_user) ?? null,
       ft_amount_user: u.ft_amount_user,
     }))
     const category = t.id_category ? categoryMap.get(t.id_category) : null

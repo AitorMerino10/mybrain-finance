@@ -146,6 +146,7 @@ export default function AnalyticsPageClient({
   const [detailsCategoryFilter, setDetailsCategoryFilter] = useState<string>('')
   const [detailsSubcategoryFilter, setDetailsSubcategoryFilter] = useState<string>('')
   const [detailsTransactionTypeFilter, setDetailsTransactionTypeFilter] = useState<{ income: boolean; expense: boolean }>({ income: true, expense: true })
+  const [detailsSharingFilter, setDetailsSharingFilter] = useState<'all' | 'solo' | 'shared'>('all')
   const [editingTransaction, setEditingTransaction] = useState<TransactionWithRelations | null>(null)
   
   // Tooltip activo para móvil
@@ -209,6 +210,7 @@ export default function AnalyticsPageClient({
           categories: initialCategories,
           subcategories,
           tags: initialTags,
+          familyMembers,
         })
         setAllTransactionsRaw(mapped)
       } else {
@@ -580,6 +582,15 @@ export default function AnalyticsPageClient({
       }
       if (detailsSubcategoryFilter && t.id_subcategory !== detailsSubcategoryFilter) {
         return false
+      }
+      // Filtro de compartición
+      if (detailsSharingFilter === 'solo') {
+        const userCount = t.users?.length ?? 0
+        if (userCount > 1) return false
+      }
+      if (detailsSharingFilter === 'shared') {
+        const userCount = t.users?.length ?? 0
+        if (userCount <= 1) return false
       }
       return true
     })
@@ -1297,6 +1308,8 @@ export default function AnalyticsPageClient({
             categories={initialCategories}
             detailsTransactionTypeFilter={detailsTransactionTypeFilter}
             setDetailsTransactionTypeFilter={setDetailsTransactionTypeFilter}
+            detailsSharingFilter={detailsSharingFilter}
+            setDetailsSharingFilter={setDetailsSharingFilter}
             setEditingTransaction={setEditingTransaction}
             onDeleteTransaction={handleDeleteTransaction}
             filteredUserIds={filters.idUsers}
@@ -1525,6 +1538,8 @@ function DetailsSection({
   categories,
   detailsTransactionTypeFilter,
   setDetailsTransactionTypeFilter,
+  detailsSharingFilter,
+  setDetailsSharingFilter,
   setEditingTransaction,
   onDeleteTransaction,
   filteredUserIds,
@@ -1537,6 +1552,8 @@ function DetailsSection({
   categories: Category[]
   detailsTransactionTypeFilter: { income: boolean; expense: boolean }
   setDetailsTransactionTypeFilter: (value: { income: boolean; expense: boolean }) => void
+  detailsSharingFilter: 'all' | 'solo' | 'shared'
+  setDetailsSharingFilter: (value: 'all' | 'solo' | 'shared') => void
   setEditingTransaction: (transaction: TransactionWithRelations | null) => void
   onDeleteTransaction: (idTransaction: string) => void
   filteredUserIds?: string[] | null
@@ -1604,7 +1621,7 @@ function DetailsSection({
         <h2 className="text-xl font-bold text-gray-900 mb-6">Detalle de Transacciones</h2>
 
         {/* Botones de filtro de tipo (toggle) */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-3">
           <button
             onClick={() => setDetailsTransactionTypeFilter({
               ...detailsTransactionTypeFilter,
@@ -1631,7 +1648,28 @@ function DetailsSection({
           >
             Gastos
           </button>
-                                        </div>
+        </div>
+
+        {/* Filtro de compartición */}
+        <div className="flex gap-2 mb-6">
+          {([
+            { value: 'all', label: 'Todas' },
+            { value: 'solo', label: 'Solo mías' },
+            { value: 'shared', label: 'Compartidas' },
+          ] as { value: 'all' | 'solo' | 'shared'; label: string }[]).map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => setDetailsSharingFilter(value)}
+              className={`flex-1 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                detailsSharingFilter === value
+                  ? 'bg-orange-100 text-orange-700 ring-2 ring-orange-300'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         {/* Controles de paginación */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
