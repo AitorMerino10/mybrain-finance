@@ -5,6 +5,7 @@ import AnalyticsPageClient from '@/components/AnalyticsPageClient'
 import { getFamilyMembers, getUserFamilies } from '@/lib/family'
 import { getAllCategoriesByFamily } from '@/lib/categories'
 import { getTagsByFamily } from '@/lib/tags'
+import { isMyBrainFamilyAllowed } from '@/lib/mybrain/access'
 
 export default async function AnalyticsPage({
   searchParams,
@@ -52,6 +53,7 @@ export default async function AnalyticsPage({
         userData={userData}
         families={families.map(f => ({ id_family: f.id_family, ds_family: f.ds_family }))}
         currentFamilyId={selectedFamilyId}
+        showMyBrainLink={isMyBrainFamilyAllowed(selectedFamilyId)}
       />
       
       {/* Main Content */}

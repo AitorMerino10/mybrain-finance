@@ -5,6 +5,7 @@ import CategoryManager from '@/components/CategoryManager'
 import HelpTooltip from '@/components/HelpTooltip'
 import { getUserFamilies } from '@/lib/family'
 import Link from 'next/link'
+import { isMyBrainFamilyAllowed } from '@/lib/mybrain/access'
 
 export default async function SettingsPage({
   searchParams,
@@ -45,6 +46,7 @@ export default async function SettingsPage({
         userData={userData}
         families={families.map(f => ({ id_family: f.id_family, ds_family: f.ds_family }))}
         currentFamilyId={selectedFamilyId}
+        showMyBrainLink={isMyBrainFamilyAllowed(selectedFamilyId)}
       />
       
       {/* Main Content */}

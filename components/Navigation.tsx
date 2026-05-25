@@ -18,6 +18,7 @@ interface NavigationProps {
   userData: { ds_user: string | null; ds_email: string | null } | null
   families: Array<{ id_family: string; ds_family: string | null }>
   currentFamilyId: string
+  showMyBrainLink?: boolean
 }
 
 export default function Navigation({
@@ -26,6 +27,7 @@ export default function Navigation({
   userData,
   families,
   currentFamilyId,
+  showMyBrainLink = false,
 }: NavigationProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -37,6 +39,9 @@ export default function Navigation({
   const familyMenuRef = useRef<HTMLDivElement>(null)
 
   const navigationItems = [
+    ...(showMyBrainLink
+      ? [{ name: 'MyBrain', href: '/mybrain', icon: 'brain', preserveFamilyQuery: false }]
+      : []),
     { name: 'Nueva Transacción', href: '/', icon: 'plus', isNewTransaction: true },
     { name: 'Analítica', href: '/analytics', icon: 'chart' },
     { name: 'Configuración', href: '/settings', icon: 'settings' },
@@ -46,6 +51,7 @@ export default function Navigation({
   const isAdmin = isAppAdmin(idUser, userData?.ds_email || null)
 
   const isActive = (href: string) => pathname === href
+  const isMyBrainActive = pathname.startsWith('/mybrain')
 
   // Cerrar menús al hacer click fuera
   useEffect(() => {
@@ -178,9 +184,14 @@ export default function Navigation({
               {navigationItems.map((item) => (
                 <li key={item.name}>
                   <Link
-                    href={`${item.href === '/' && item.isNewTransaction ? `/?family=${currentFamilyId}&action=new-transaction` : `${item.href}${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}`}
+                    href={`${
+                      item.href === '/' && item.isNewTransaction
+                        ? `/?family=${currentFamilyId}&action=new-transaction`
+                        : `${item.href}${item.preserveFamilyQuery === false ? '' : currentFamilyId ? `?family=${currentFamilyId}` : ''}`
+                    }`}
                     className={`group flex gap-x-3 rounded-lg p-3 text-sm font-semibold leading-6 transition-colors ${
-                      (item.href === '/' && item.isNewTransaction && searchParams?.get('action') === 'new-transaction') || (item.href !== '/' && isActive(item.href))
+                      (item.href === '/' && item.isNewTransaction && searchParams?.get('action') === 'new-transaction') ||
+                      (item.href === '/mybrain' ? isMyBrainActive : item.href !== '/' && isActive(item.href))
                         ? 'bg-slate-700 text-white'
                         : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                     }`}
@@ -189,6 +200,9 @@ export default function Navigation({
                       <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                       </svg>
+                    )}
+                    {item.icon === 'brain' && (
+                      <span className="h-5 w-5 shrink-0 text-base leading-5">🧠</span>
                     )}
                     {item.icon === 'chart' && (
                       <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
@@ -330,6 +344,17 @@ export default function Navigation({
               </svg>
             </Link>
           )}
+          {showMyBrainLink && (
+            <Link
+              href="/mybrain"
+              className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors ml-2 ${
+                isMyBrainActive ? 'bg-white text-slate-900' : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+              aria-label="MyBrain"
+            >
+              <span className="text-lg leading-none">🧠</span>
+            </Link>
+          )}
           <Link
             href={`/help${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
             className="flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 transition-colors ml-2"
@@ -392,6 +417,19 @@ export default function Navigation({
             <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
               <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1s.4-1 1-1h12c.6 0 1 .4 1 1z"/>
             </svg>
+          </Link>
+        )}
+        {showMyBrainLink && (
+          <Link
+            href="/mybrain"
+            className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors ${
+              isMyBrainActive
+                ? 'bg-white text-slate-900'
+                : 'bg-slate-800/80 text-white hover:bg-slate-800'
+            }`}
+            aria-label="MyBrain"
+          >
+            <span className="text-lg leading-none">🧠</span>
           </Link>
         )}
         <Link

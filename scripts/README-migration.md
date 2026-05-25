@@ -27,6 +27,10 @@ Este script:
 
 - **NO ejecutes el script de borrado antes del de añadir IDs**, ya que necesitas las columnas primero
 - Los scripts son idempotentes: puedes ejecutarlos múltiples veces sin problemas
+- Para activar la nueva capa de `MyBrain`, ejecuta también:
+  ```sql
+  -- Ejecutar: scripts/create-mybrain-foundation.sql
+  ```
 - Después de ejecutar, necesitarás regenerar los tipos TypeScript con:
   ```bash
   npx supabase gen types typescript --project-id tu-project-id > types/supabase.ts

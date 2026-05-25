@@ -6,6 +6,7 @@ import { getUserFamilies } from '@/lib/family'
 import { isAppAdmin, getAllFamilyRequests, getAllFamiliesWithMembers, getAllUsers } from '@/lib/admin'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
+import { isMyBrainFamilyAllowed } from '@/lib/mybrain/access'
 
 async function enrichRequestsWithAuthEmails(
   requests: Awaited<ReturnType<typeof getAllFamilyRequests>>,
@@ -123,6 +124,7 @@ export default async function AdminPage({
         userData={userData}
         families={families.map(f => ({ id_family: f.id_family, ds_family: f.ds_family }))}
         currentFamilyId={selectedFamilyId}
+        showMyBrainLink={isMyBrainFamilyAllowed(selectedFamilyId)}
       />
       
       {/* Main Content */}

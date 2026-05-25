@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import HomePageClient from '@/components/HomePageClient'
 import { getUserFamilies } from '@/lib/family'
+import { isMyBrainFamilyAllowed } from '@/lib/mybrain/access'
 
 export default async function HomePage({
   searchParams,
@@ -46,6 +47,7 @@ export default async function HomePage({
         userData={userData}
         families={families.map(f => ({ id_family: f.id_family, ds_family: f.ds_family }))}
         currentFamilyId={selectedFamilyId}
+        showMyBrainLink={isMyBrainFamilyAllowed(selectedFamilyId)}
       />
       
       {/* Main Content */}
