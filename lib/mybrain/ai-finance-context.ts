@@ -3,10 +3,12 @@ import type {
   MyBrainAIFinanceCategoryOption,
   MyBrainAIFinanceMember,
   MyBrainAIFinanceSubcategoryOption,
+  MyBrainAIFinanceTagOption,
 } from '@/types/mybrain'
 import type { Database } from '@/types/supabase'
 import { getCategoriesByType, getTransactionTypeId } from '@/lib/categories'
 import { getFamilyMembers, getUserFamilies } from '@/lib/family'
+import { getTagsByFamily } from '@/lib/tags'
 
 export type MyBrainAIFinanceContext = {
   familyId: string
@@ -15,6 +17,7 @@ export type MyBrainAIFinanceContext = {
   currentUserId: string
   members: MyBrainAIFinanceMember[]
   categories: MyBrainAIFinanceCategoryOption[]
+  tags: MyBrainAIFinanceTagOption[]
 }
 
 export type MyBrainAIFinanceUnavailableContext = {
@@ -48,6 +51,7 @@ export function serializeFinanceContextForPrompt(context: MyBrainAIFinanceContex
         name: subcategory.name,
       })),
     })),
+    tags: context.tags,
   }
 }
 
@@ -72,9 +76,10 @@ export async function loadMyBrainAIFinanceContext(
   }
 
   const family = families[0]
-  const [members, categories, transactionTypeId] = await Promise.all([
+  const [members, categories, tags, transactionTypeId] = await Promise.all([
     getFamilyMembers(supabase, family.id_family),
     getCategoriesByType(supabase, family.id_family, 'Expense'),
+    getTagsByFamily(supabase, family.id_family),
     getTransactionTypeId(supabase, 'Expense'),
   ])
 
@@ -138,6 +143,10 @@ export async function loadMyBrainAIFinanceContext(
         id: category.id_category,
         name: category.ds_category,
         subcategories: subcategoriesByCategory.get(category.id_category) || [],
+      })),
+      tags: tags.map((tag) => ({
+        id: tag.id_tag,
+        name: tag.ds_tag,
       })),
     },
   }

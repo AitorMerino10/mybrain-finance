@@ -35,12 +35,11 @@ export function validateMyBrainAIProposal(
   inputText: string,
 ): MyBrainAIProposalResponse {
   const sectionMap = new Map(sections.map((section) => [section.id, section]))
-  const seenSections = new Set<string>()
   const proposals: MyBrainAIProposalEntry[] = []
   const responseWarnings = [...(rawResponse.warnings || [])]
 
   for (const proposal of rawResponse.proposals || []) {
-    if (!proposal.sectionId || seenSections.has(proposal.sectionId)) {
+    if (!proposal.sectionId) {
       continue
     }
 
@@ -109,8 +108,6 @@ export function validateMyBrainAIProposal(
       fields,
       missingFields,
     })
-
-    seenSections.add(section.id)
   }
 
   const questions = dedupeStrings(rawResponse.questions || [])

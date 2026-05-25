@@ -43,6 +43,7 @@ async function createFinanceExpenseFromAI(
     declaredMonth: string
     categoryId: string
     subcategoryId: string | null
+    tagId: string | null
     description: string
     affectedUserIds: string[]
   },
@@ -104,6 +105,24 @@ async function createFinanceExpenseFromAI(
     }
   }
 
+  if (params.tagId) {
+    const { data: tag, error: tagError } = await supabase
+      .from('pml_dim_tag')
+      .select('id_tag')
+      .eq('id_tag', params.tagId)
+      .eq('id_family', params.familyId)
+      .maybeSingle()
+
+    if (tagError) {
+      console.error('Error al validar tag del gasto de Finance con IA:', tagError)
+      throw tagError
+    }
+
+    if (!tag) {
+      throw new Error('La tag seleccionada no pertenece a tu familia de Finance.')
+    }
+  }
+
   const roundedAmount = Math.round((params.amount + Number.EPSILON) * 100) / 100
   const declaredMonthForDb = convertMonthYearToDBFormat(params.declaredMonth)
   const splitAmounts = splitAmountAcrossUsers(
@@ -147,6 +166,20 @@ async function createFinanceExpenseFromAI(
     throw new Error(
       'No se pudo guardar el split del gasto. No se han ejecutado updates ni deletes; revisa permisos/RLS de pml_rel_transaction_user.',
     )
+  }
+
+  if (params.tagId) {
+    const { error: tagRelationError } = await supabase
+      .from('pml_rel_transaction_tag')
+      .insert({
+        id_transaction: created.id_transaction,
+        id_tag: params.tagId,
+      })
+
+    if (tagRelationError) {
+      console.error('Error al asociar tag al gasto de Finance con IA:', tagRelationError)
+      throw new Error('No se pudo asociar la tag al gasto de Finance.')
+    }
   }
 
   return created
@@ -205,6 +238,7 @@ export async function confirmFinanceExpenseProposal(
     transactionTypeId: contextResult.context.transactionTypeId,
     categoryId: transaction.categoryId,
     subcategoryId: transaction.subcategoryId,
+    tagId: transaction.tagId,
     amount: transaction.amount,
     date: transaction.date,
     declaredMonth: transaction.declaredMonth,
@@ -219,6 +253,7 @@ export async function confirmFinanceExpenseProposal(
       date: created.dt_date,
       categoryId: created.id_category,
       subcategoryId: created.id_subcategory,
+      tagId: transaction.tagId,
       affectedUserIds: transaction.affectedUserIds,
       description: created.ds_comments || transaction.description,
     },

@@ -64,6 +64,31 @@ function getSpeechRecognitionConstructor() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null
 }
 
+function normalizeCaptureText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function looksLikeFinanceOnlyCapture(value: string) {
+  const normalized = normalizeCaptureText(value)
+  const hasExpenseSignal =
+    /\b\d+(?:[.,]\d+)?\s*(?:€|eur|euro|euros)\b/.test(normalized) ||
+    /\b(?:gasto|gastado|gaste|pague|pago|coste|costo|reembolso|reembolsable)\b/.test(
+      normalized,
+    )
+
+  if (!hasExpenseSignal) return false
+
+  const hasMemorySignal =
+    /\b(?:me gusto|me encanto|recomiendo|opinion|bueno|malo|excelente|duro|suave|llamado|probe|visite|estuve|fui|cene|comi|tome|vino|restaurante|bar|cafe|hotel|pelicula|libro)\b/.test(
+      normalized,
+    )
+
+  return !hasMemorySignal
+}
+
 export default function AICaptureComposer({
   sections,
   triggerClassName,
@@ -83,6 +108,9 @@ export default function AICaptureComposer({
   const [info, setInfo] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isCreatingFinanceTag, setIsCreatingFinanceTag] = useState(false)
+  const [newFinanceTagName, setNewFinanceTagName] = useState('')
+  const [selectedFinanceDraftIndex, setSelectedFinanceDraftIndex] = useState(0)
   const [isListening, setIsListening] = useState(false)
   const [speechSupported, setSpeechSupported] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -91,6 +119,17 @@ export default function AICaptureComposer({
     () => sections.filter((section) => !section.isSystemSection),
     [sections],
   )
+
+  const financeDrafts = useMemo(() => {
+    if (!financeProposal) return []
+    return financeProposal.proposals.length > 0
+      ? financeProposal.proposals
+      : financeProposal.proposal
+        ? [financeProposal.proposal]
+        : []
+  }, [financeProposal])
+  const selectedFinanceDraft =
+    financeDrafts[selectedFinanceDraftIndex] || financeDrafts[0] || null
 
   useMyBrainOverlayLock(open)
 
@@ -108,6 +147,12 @@ export default function AICaptureComposer({
     }
   }, [])
 
+  useEffect(() => {
+    if (selectedFinanceDraftIndex >= financeDrafts.length) {
+      setSelectedFinanceDraftIndex(0)
+    }
+  }, [financeDrafts.length, selectedFinanceDraftIndex])
+
   function handleClose() {
     recognitionRef.current?.stop()
     setIsListening(false)
@@ -115,6 +160,7 @@ export default function AICaptureComposer({
     setError(null)
     setInfo(null)
     setFinanceProposal(null)
+    setSelectedFinanceDraftIndex(0)
   }
 
   function updateProposal(updater: (current: MyBrainAIProposalEntry[]) => MyBrainAIProposalEntry[]) {
@@ -129,14 +175,80 @@ export default function AICaptureComposer({
 
   function updateFinanceProposal(
     updater: (current: MyBrainAIFinanceProposal) => MyBrainAIFinanceProposal,
+    proposalIndex = selectedFinanceDraftIndex,
   ) {
     setFinanceProposal((current) => {
       if (!current?.proposal) return current
+      const currentProposals =
+        current.proposals.length > 0 ? current.proposals : [current.proposal]
+      const nextProposals = currentProposals.map((proposal, index) =>
+        index === proposalIndex ? updater(proposal) : proposal,
+      )
       return {
         ...current,
-        proposal: updater(current.proposal),
+        proposal: nextProposals[0] || null,
+        proposals: nextProposals,
       }
     })
+  }
+
+  async function handleCreateFinanceTag(name?: string, proposalIndex = selectedFinanceDraftIndex) {
+    const tagName = (name || newFinanceTagName).trim()
+    if (!tagName) return
+
+    try {
+      setIsCreatingFinanceTag(true)
+      setError(null)
+      const response = await fetch('/api/mybrain/ai/finance/tags', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: tagName,
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error || 'No se pudo crear la tag')
+      }
+
+      const createdTag = data as { id: string; name: string }
+      setFinanceProposal((current) => {
+        if (!current?.proposal) return current
+        const currentProposals =
+          current.proposals.length > 0 ? current.proposals : [current.proposal]
+        const nextProposals = currentProposals.map((proposal, index) =>
+          index === proposalIndex
+            ? {
+                ...proposal,
+                tagId: createdTag.id,
+                suggestedNewTagName: null,
+              }
+            : proposal,
+        )
+        const existing = current.context.tags.some((tag) => tag.id === createdTag.id)
+        return {
+          ...current,
+          context: {
+            ...current.context,
+            tags: existing
+              ? current.context.tags
+              : [...current.context.tags, createdTag].sort((a, b) =>
+                  a.name.localeCompare(b.name),
+                ),
+          },
+          proposal: nextProposals[0] || null,
+          proposals: nextProposals,
+        }
+      })
+      setNewFinanceTagName('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear la tag')
+    } finally {
+      setIsCreatingFinanceTag(false)
+    }
   }
 
   function toggleVoiceInput() {
@@ -195,12 +307,14 @@ export default function AICaptureComposer({
       setInfo(null)
       setProposal(null)
       setFinanceProposal(null)
+      setSelectedFinanceDraftIndex(0)
 
       let nextProposal: MyBrainAIProposalResponse | null = null
       let nextFinanceProposal: MyBrainAIFinanceProposalResponse | null = null
       const errors: string[] = []
+      const financeOnlyCapture = looksLikeFinanceOnlyCapture(inputText)
 
-      if (personalSections.length > 0) {
+      if (personalSections.length > 0 && !financeOnlyCapture) {
         try {
           const response = await fetch('/api/mybrain/ai/propose', {
             method: 'POST',
@@ -253,7 +367,14 @@ export default function AICaptureComposer({
       }
 
       const personalCount = nextProposal?.proposals.length || 0
-      const financeCount = nextFinanceProposal?.proposal ? 1 : 0
+      const financeCount =
+        nextFinanceProposal?.proposals.length ||
+        (nextFinanceProposal?.proposal ? 1 : 0)
+
+      if (financeOnlyCapture && financeCount > 0) {
+        setProposal(null)
+        nextProposal = null
+      }
 
       if (personalCount === 0 && financeCount === 0 && errors.length > 0) {
         throw new Error(errors.join(' '))
@@ -275,9 +396,9 @@ export default function AICaptureComposer({
 
   async function handleSave() {
     const personalProposals = proposal?.proposals || []
-    const financeDraft = financeProposal?.proposal || null
+    const financeDraftsToSave = financeDrafts
 
-    if (personalProposals.length === 0 && !financeDraft) {
+    if (personalProposals.length === 0 && financeDraftsToSave.length === 0) {
       return
     }
 
@@ -310,7 +431,7 @@ export default function AICaptureComposer({
         entryCount = result.createdEntries.length
       }
 
-      if (financeDraft) {
+      for (const financeDraft of financeDraftsToSave) {
         const financeResponse = await fetch('/api/mybrain/ai/finance/save', {
           method: 'POST',
           headers: {
@@ -328,7 +449,7 @@ export default function AICaptureComposer({
         }
 
         const financeResult = financeData as MyBrainAIFinanceSaveResult
-        transactionCount = financeResult.createdTransaction ? 1 : 0
+        transactionCount += financeResult.createdTransaction ? 1 : 0
       }
 
       setInfo(
@@ -338,7 +459,11 @@ export default function AICaptureComposer({
             : entryCount > 1
               ? `${entryCount} entradas guardadas`
               : '',
-          transactionCount === 1 ? '1 gasto de Finance guardado' : '',
+          transactionCount === 1
+            ? '1 gasto de Finance guardado'
+            : transactionCount > 1
+              ? `${transactionCount} gastos de Finance guardados`
+              : '',
         ]
           .filter(Boolean)
           .join(' y ') + '.',
@@ -699,7 +824,7 @@ export default function AICaptureComposer({
                                   {financeProposal.summary}
                                 </p>
                               </div>
-                              {financeProposal.proposal && (
+                              {selectedFinanceDraft && (
                                 <button
                                   type="button"
                                   onClick={() => setFinanceProposal(null)}
@@ -729,7 +854,32 @@ export default function AICaptureComposer({
                               </ul>
                             )}
 
-                            {financeProposal.proposal ? (
+                            {financeDrafts.length > 1 && (
+                              <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+                                <p className="font-semibold">
+                                  Se han detectado {financeDrafts.length} gastos de Finance.
+                                </p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {financeDrafts.map((draft, index) => (
+                                    <button
+                                      key={`${draft.description}-${index}`}
+                                      type="button"
+                                      onClick={() => setSelectedFinanceDraftIndex(index)}
+                                      className={`rounded-full px-3 py-1 text-left text-xs font-semibold transition-colors ${
+                                        selectedFinanceDraftIndex === index
+                                          ? 'bg-emerald-700 text-white'
+                                          : 'bg-white text-emerald-800 hover:bg-emerald-100'
+                                      }`}
+                                    >
+                                      {draft.amount ? `${draft.amount} · ` : ''}
+                                      {draft.description}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {selectedFinanceDraft ? (
                               <>
                                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                                   <div>
@@ -740,7 +890,7 @@ export default function AICaptureComposer({
                                       type="number"
                                       min="0"
                                       step="0.01"
-                                      value={financeProposal.proposal.amount ?? ''}
+                                      value={selectedFinanceDraft.amount ?? ''}
                                       onChange={(event) =>
                                         updateFinanceProposal((current) => ({
                                           ...current,
@@ -758,7 +908,7 @@ export default function AICaptureComposer({
                                     </label>
                                     <input
                                       type="date"
-                                      value={financeProposal.proposal.date}
+                                      value={selectedFinanceDraft.date}
                                       onChange={(event) =>
                                         updateFinanceProposal((current) => ({
                                           ...current,
@@ -773,7 +923,7 @@ export default function AICaptureComposer({
                                       Mes declarado
                                     </label>
                                     <input
-                                      value={financeProposal.proposal.declaredMonth}
+                                      value={selectedFinanceDraft.declaredMonth}
                                       onChange={(event) =>
                                         updateFinanceProposal((current) => ({
                                           ...current,
@@ -792,7 +942,7 @@ export default function AICaptureComposer({
                                       Categoría
                                     </label>
                                     <select
-                                      value={financeProposal.proposal.categoryId || ''}
+                                      value={selectedFinanceDraft.categoryId || ''}
                                       onChange={(event) =>
                                         updateFinanceProposal((current) => ({
                                           ...current,
@@ -815,7 +965,7 @@ export default function AICaptureComposer({
                                       Subcategoría
                                     </label>
                                     <select
-                                      value={financeProposal.proposal.subcategoryId || ''}
+                                      value={selectedFinanceDraft.subcategoryId || ''}
                                       onChange={(event) =>
                                         updateFinanceProposal((current) => ({
                                           ...current,
@@ -828,7 +978,7 @@ export default function AICaptureComposer({
                                       {financeProposal.context.categories
                                         .find(
                                           (category) =>
-                                            category.id === financeProposal.proposal?.categoryId,
+                                            category.id === selectedFinanceDraft.categoryId,
                                         )
                                         ?.subcategories.map((subcategory) => (
                                           <option key={subcategory.id} value={subcategory.id}>
@@ -839,12 +989,76 @@ export default function AICaptureComposer({
                                   </div>
                                 </div>
 
+                                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                  <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                                    <div>
+                                      <label className="mb-2 block text-sm font-medium text-slate-700">
+                                        Tag
+                                      </label>
+                                      <select
+                                        value={selectedFinanceDraft.tagId || ''}
+                                        onChange={(event) =>
+                                          updateFinanceProposal((current) => ({
+                                            ...current,
+                                            tagId: event.target.value || null,
+                                            suggestedNewTagName: event.target.value
+                                              ? null
+                                              : current.suggestedNewTagName,
+                                          }))
+                                        }
+                                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-[#90EBD6] focus:ring-2 focus:ring-[#90EBD6]/30"
+                                      >
+                                        <option value="">Sin tag</option>
+                                        {financeProposal.context.tags.map((tag) => (
+                                          <option key={tag.id} value={tag.id}>
+                                            {tag.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    {selectedFinanceDraft.suggestedNewTagName && (
+                                      <div className="flex items-end">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleCreateFinanceTag(
+                                              selectedFinanceDraft.suggestedNewTagName || '',
+                                            )
+                                          }
+                                          disabled={isCreatingFinanceTag}
+                                          className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                          {isCreatingFinanceTag
+                                            ? 'Creando...'
+                                            : `Crear "${selectedFinanceDraft.suggestedNewTagName}"`}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                    <input
+                                      value={newFinanceTagName}
+                                      onChange={(event) => setNewFinanceTagName(event.target.value)}
+                                      placeholder="Crear otra tag..."
+                                      className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-[#90EBD6] focus:ring-2 focus:ring-[#90EBD6]/30"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCreateFinanceTag()}
+                                      disabled={isCreatingFinanceTag || !newFinanceTagName.trim()}
+                                      className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      {isCreatingFinanceTag ? 'Creando...' : 'Nueva tag'}
+                                    </button>
+                                  </div>
+                                </div>
+
                                 <div className="mt-4">
                                   <label className="mb-2 block text-sm font-medium text-slate-700">
                                     Descripción del gasto
                                   </label>
                                   <textarea
-                                    value={financeProposal.proposal.description}
+                                    value={selectedFinanceDraft.description}
                                     onChange={(event) =>
                                       updateFinanceProposal((current) => ({
                                         ...current,
@@ -862,7 +1076,7 @@ export default function AICaptureComposer({
                                   <div className="grid gap-2 sm:grid-cols-2">
                                     {financeProposal.context.members.map((member) => {
                                       const selected =
-                                        financeProposal.proposal?.affectedUserIds.includes(
+                                        selectedFinanceDraft.affectedUserIds.includes(
                                           member.id,
                                         ) || false
 
@@ -901,29 +1115,29 @@ export default function AICaptureComposer({
                                       )
                                     })}
                                   </div>
-                                  {financeProposal.proposal.amount &&
-                                    financeProposal.proposal.affectedUserIds.length > 0 && (
+                                  {selectedFinanceDraft.amount &&
+                                    selectedFinanceDraft.affectedUserIds.length > 0 && (
                                       <p className="mt-2 text-xs text-slate-500">
                                         Split estimado:{' '}
                                         {(
-                                          financeProposal.proposal.amount /
-                                          financeProposal.proposal.affectedUserIds.length
+                                          selectedFinanceDraft.amount /
+                                          selectedFinanceDraft.affectedUserIds.length
                                         ).toFixed(2)}{' '}
                                         por persona.
                                       </p>
                                     )}
                                 </div>
 
-                                {financeProposal.proposal.missingFields.length > 0 && (
+                                {selectedFinanceDraft.missingFields.length > 0 && (
                                   <p className="mt-4 text-xs text-amber-700">
                                     Falta contexto en:{' '}
-                                    {financeProposal.proposal.missingFields.join(', ')}.
+                                    {selectedFinanceDraft.missingFields.join(', ')}.
                                   </p>
                                 )}
 
-                                {financeProposal.proposal.warnings.length > 0 && (
+                                {selectedFinanceDraft.warnings.length > 0 && (
                                   <ul className="mt-4 list-disc pl-5 text-xs text-slate-500">
-                                    {financeProposal.proposal.warnings.map((warning) => (
+                                    {selectedFinanceDraft.warnings.map((warning) => (
                                       <li key={warning}>{warning}</li>
                                     ))}
                                   </ul>
@@ -970,7 +1184,7 @@ export default function AICaptureComposer({
                     onClick={handleSave}
                     disabled={
                       isSaving ||
-                      ((proposal?.proposals.length || 0) === 0 && !financeProposal?.proposal)
+                      ((proposal?.proposals.length || 0) === 0 && financeDrafts.length === 0)
                     }
                     className="rounded-2xl bg-[#90EBD6] px-4 py-2.5 text-sm font-semibold text-[#0f766e] transition-colors hover:bg-[#7DD3C1] disabled:cursor-not-allowed disabled:opacity-60"
                   >

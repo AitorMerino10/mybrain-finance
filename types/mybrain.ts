@@ -230,12 +230,19 @@ export type MyBrainAIFinanceCategoryOption = {
   subcategories: MyBrainAIFinanceSubcategoryOption[]
 }
 
+export type MyBrainAIFinanceTagOption = {
+  id: string
+  name: string
+}
+
 export type MyBrainAIFinanceProposal = {
   amount: number | null
   date: string
   declaredMonth: string
   categoryId: string | null
   subcategoryId: string | null
+  tagId: string | null
+  suggestedNewTagName: string | null
   description: string
   affectedUserIds: string[]
   confidence: MyBrainAIConfidence
@@ -251,6 +258,7 @@ export type MyBrainAIFinanceProposalResponse = {
   warnings: string[]
   questions: string[]
   proposal: MyBrainAIFinanceProposal | null
+  proposals: MyBrainAIFinanceProposal[]
   context: {
     familyId: string | null
     familyName: string | null
@@ -258,6 +266,7 @@ export type MyBrainAIFinanceProposalResponse = {
     currentUserId: string
     members: MyBrainAIFinanceMember[]
     categories: MyBrainAIFinanceCategoryOption[]
+    tags: MyBrainAIFinanceTagOption[]
   }
 }
 
@@ -272,6 +281,7 @@ export type MyBrainAIFinanceSaveResult = {
     date: string
     categoryId: string | null
     subcategoryId: string | null
+    tagId: string | null
     affectedUserIds: string[]
     description: string
   }

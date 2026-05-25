@@ -19,6 +19,12 @@ function dedupeStrings(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
 }
 
+function normalizeSuggestedTagName(value: string) {
+  const normalized = value.trim().replace(/\s+/g, ' ')
+  if (!normalized) return null
+  return normalized.slice(0, 40)
+}
+
 function isValidISODate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
   const date = new Date(`${value}T00:00:00.000Z`)
@@ -43,6 +49,7 @@ function getContextForResponse(context: MyBrainAIFinanceContext) {
     currentUserId: context.currentUserId,
     members: context.members,
     categories: context.categories,
+    tags: context.tags,
   }
 }
 
@@ -59,6 +66,7 @@ export function buildUnavailableFinanceProposalResponse(params: {
     warnings: [params.reason],
     questions: [],
     proposal: null,
+    proposals: [],
     context: {
       familyId: null,
       familyName: null,
@@ -66,6 +74,7 @@ export function buildUnavailableFinanceProposalResponse(params: {
       currentUserId: params.currentUserId,
       members: [],
       categories: [],
+      tags: [],
     },
   }
 }
@@ -78,9 +87,10 @@ export function validateMyBrainAIFinanceProposal(
   const warnings = [...rawResponse.warnings]
   const questions = [...rawResponse.questions]
   const categoryMap = new Map(context.categories.map((category) => [category.id, category]))
+  const tagMap = new Map(context.tags.map((tag) => [tag.id, tag]))
   const memberIds = new Set(context.members.map((member) => member.id))
 
-  if (!rawResponse.proposal) {
+  if (!rawResponse.proposals.length) {
     return {
       status: normalizeStatus(rawResponse.status),
       inputText,
@@ -91,30 +101,32 @@ export function validateMyBrainAIFinanceProposal(
       warnings: dedupeStrings(warnings),
       questions: dedupeStrings(questions),
       proposal: null,
+      proposals: [],
       context: getContextForResponse(context),
     }
   }
 
-  const proposalWarnings = [...rawResponse.proposal.warnings]
-  const missingFields = [...rawResponse.proposal.missingFields]
-  const date = isValidISODate(rawResponse.proposal.date)
-    ? rawResponse.proposal.date
+  const proposals = rawResponse.proposals.slice(0, 5).map((rawProposal) => {
+  const proposalWarnings = [...rawProposal.warnings]
+  const missingFields = [...rawProposal.missingFields]
+  const date = isValidISODate(rawProposal.date)
+    ? rawProposal.date
     : getTodayISOString()
-  const declaredMonth = isValidDeclaredMonth(rawResponse.proposal.declaredMonth)
-    ? rawResponse.proposal.declaredMonth
+  const declaredMonth = isValidDeclaredMonth(rawProposal.declaredMonth)
+    ? rawProposal.declaredMonth
     : getDeclaredMonthFromDate(date)
 
   const amount =
-    typeof rawResponse.proposal.amount === 'number' && rawResponse.proposal.amount > 0
-      ? Math.round((rawResponse.proposal.amount + Number.EPSILON) * 100) / 100
+    typeof rawProposal.amount === 'number' && rawProposal.amount > 0
+      ? Math.round((rawProposal.amount + Number.EPSILON) * 100) / 100
       : null
 
   if (amount === null) {
     missingFields.push('amount')
   }
 
-  const category = rawResponse.proposal.categoryId
-    ? categoryMap.get(rawResponse.proposal.categoryId)
+  const category = rawProposal.categoryId
+    ? categoryMap.get(rawProposal.categoryId)
     : null
   const categoryId = category?.id || null
 
@@ -124,39 +136,53 @@ export function validateMyBrainAIFinanceProposal(
 
   const subcategory = category
     ? category.subcategories.find(
-        (candidate) => candidate.id === rawResponse.proposal?.subcategoryId,
+        (candidate) => candidate.id === rawProposal.subcategoryId,
       )
     : null
   const subcategoryId = subcategory?.id || null
 
-  if (rawResponse.proposal.subcategoryId && !subcategoryId) {
+  if (rawProposal.subcategoryId && !subcategoryId) {
     proposalWarnings.push('La subcategoría propuesta no pertenece a la categoría seleccionada.')
   }
 
-  const affectedUserIds = rawResponse.proposal.affectedUserIds.filter((id) =>
+  const tagId = rawProposal.tagId
+    ? tagMap.get(rawProposal.tagId)?.id || null
+    : null
+  if (rawProposal.tagId && !tagId) {
+    proposalWarnings.push('La tag propuesta no pertenece a tu familia de Finance.')
+  }
+  const suggestedNewTagName = tagId
+    ? null
+    : normalizeSuggestedTagName(rawProposal.suggestedNewTagName || '')
+
+  const affectedUserIds = rawProposal.affectedUserIds.filter((id) =>
     memberIds.has(id),
   )
   const safeAffectedUserIds =
     affectedUserIds.length > 0 ? Array.from(new Set(affectedUserIds)) : [context.currentUserId]
 
-  const description = rawResponse.proposal.description.trim() || inputText.trim()
+  const description = rawProposal.description.trim() || inputText.trim()
 
-  const proposal: MyBrainAIFinanceProposal = {
+  return {
     amount,
     date,
     declaredMonth,
     categoryId,
     subcategoryId,
+    tagId,
+    suggestedNewTagName,
     description,
     affectedUserIds: safeAffectedUserIds,
-    confidence: rawResponse.proposal.confidence,
+    confidence: rawProposal.confidence,
     warnings: dedupeStrings(proposalWarnings),
     missingFields: dedupeStrings(missingFields),
   }
+  })
 
   return {
     status:
-      proposal.amount !== null && proposal.categoryId && questions.length === 0
+      proposals.some((proposal) => proposal.amount !== null && proposal.categoryId) &&
+      questions.length === 0
         ? 'ready'
         : normalizeStatus(rawResponse.status),
     inputText,
@@ -164,7 +190,8 @@ export function validateMyBrainAIFinanceProposal(
     summary: rawResponse.summary || 'He preparado un gasto de Finance para revisar.',
     warnings: dedupeStrings(warnings),
     questions: dedupeStrings(questions),
-    proposal,
+    proposal: proposals[0] || null,
+    proposals,
     context: getContextForResponse(context),
   }
 }
@@ -201,6 +228,11 @@ export function validateMyBrainAIFinanceSaveProposal(
     throw new Error('La subcategoría seleccionada no pertenece a la categoría.')
   }
 
+  const tagId = proposal.tagId || null
+  if (tagId && !context.tags.some((tag) => tag.id === tagId)) {
+    throw new Error('La tag seleccionada no pertenece a tu familia de Finance.')
+  }
+
   const memberIds = new Set(context.members.map((member) => member.id))
   const affectedUserIds = Array.from(
     new Set(proposal.affectedUserIds.filter((id) => memberIds.has(id))),
@@ -220,6 +252,8 @@ export function validateMyBrainAIFinanceSaveProposal(
     declaredMonth: proposal.declaredMonth,
     categoryId: category.id,
     subcategoryId,
+    tagId,
+    suggestedNewTagName: normalizeSuggestedTagName(proposal.suggestedNewTagName || ''),
     description: proposal.description.trim() || 'Gasto guardado con IA desde MyBrain',
     affectedUserIds,
   }

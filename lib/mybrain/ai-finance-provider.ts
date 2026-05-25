@@ -18,6 +18,8 @@ export type RawMyBrainAIFinanceProposal = {
   declaredMonth: string
   categoryId: string
   subcategoryId: string
+  tagId: string
+  suggestedNewTagName: string
   description: string
   affectedUserIds: string[]
   confidence: MyBrainAIConfidence
@@ -31,17 +33,23 @@ export type RawMyBrainAIFinanceResponse = {
   warnings: string[]
   questions: string[]
   proposal: RawMyBrainAIFinanceProposal | null
+  proposals: RawMyBrainAIFinanceProposal[]
 }
 
 function buildFinanceSystemPrompt() {
   return [
     'You are a structured expense extraction assistant for MyBrain Finance.',
-    'Your task is to read the user input and propose at most ONE expense transaction draft.',
-    'Only propose expenses, never income. If the input is not an expense, return proposal=null.',
-    'Never invent family, member, category, subcategory, or transaction type IDs.',
+    'Your task is to read the user input and propose one expense transaction draft for each distinct expense mentioned.',
+    'Only propose expenses, never income. If the input is not an expense, return proposals=[] and proposal=null.',
+    'If the user mentions two expenses, return two proposals. If they mention three expenses, return three proposals.',
+    'Never invent family, member, category, subcategory, tag, or transaction type IDs.',
     'Use only categoryId and subcategoryId values provided in the context.',
     'If no category is clear, leave categoryId empty and add it to missingFields.',
     'If no subcategory is clear, leave subcategoryId empty; subcategory is optional.',
+    'For tags, use only tagId values provided in the context.',
+    'If the transcript clearly mentions an existing tag by name or close synonym, set tagId to that tag ID.',
+    'If the transcript clearly mentions a useful tag-like label that does not exist yet, leave tagId empty and set suggestedNewTagName to a short tag name.',
+    'If no tag is mentioned, leave tagId and suggestedNewTagName empty. Tags are optional.',
     'Use YYYY-MM-DD for date and MM-YYYY for declaredMonth.',
     'The declaredMonth should match the expense date unless the user explicitly says a different declared/accounting month.',
     'The description must preserve useful expense context, such as merchant, place, people, and reason.',
@@ -55,18 +63,23 @@ function buildFinanceSystemPrompt() {
         summary: 'string',
         warnings: ['string'],
         questions: ['string'],
-        proposal: {
-          amount: 12.34,
-          date: 'YYYY-MM-DD',
-          declaredMonth: 'MM-YYYY',
-          categoryId: 'uuid-or-empty',
-          subcategoryId: 'uuid-or-empty',
-          description: 'string',
-          affectedUserIds: ['uuid'],
-          confidence: 'high',
-          warnings: ['string'],
-          missingFields: ['string'],
-        },
+        proposal: null,
+        proposals: [
+          {
+            amount: 12.34,
+            date: 'YYYY-MM-DD',
+            declaredMonth: 'MM-YYYY',
+            categoryId: 'uuid-or-empty',
+            subcategoryId: 'uuid-or-empty',
+            tagId: 'uuid-or-empty',
+            suggestedNewTagName: 'string-or-empty',
+            description: 'string',
+            affectedUserIds: ['uuid'],
+            confidence: 'high',
+            warnings: ['string'],
+            missingFields: ['string'],
+          },
+        ],
       },
       null,
       2,
@@ -121,30 +134,38 @@ function asAmount(value: unknown) {
 
 function parseFinanceResponse(input: unknown): RawMyBrainAIFinanceResponse {
   const value = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
-  const rawProposal =
-    value.proposal && typeof value.proposal === 'object'
-      ? (value.proposal as Record<string, unknown>)
-      : null
+  const rawProposalValues = Array.isArray(value.proposals)
+    ? value.proposals
+    : value.proposal
+      ? [value.proposal]
+      : []
+
+  const proposals: RawMyBrainAIFinanceProposal[] = rawProposalValues
+    .filter((proposal): proposal is Record<string, unknown> =>
+      Boolean(proposal && typeof proposal === 'object'),
+    )
+    .map((rawProposal) => ({
+      amount: asAmount(rawProposal.amount),
+      date: asString(rawProposal.date),
+      declaredMonth: asString(rawProposal.declaredMonth),
+      categoryId: asString(rawProposal.categoryId),
+      subcategoryId: asString(rawProposal.subcategoryId),
+      tagId: asString(rawProposal.tagId),
+      suggestedNewTagName: asString(rawProposal.suggestedNewTagName),
+      description: asString(rawProposal.description),
+      affectedUserIds: asStringArray(rawProposal.affectedUserIds),
+      confidence: asConfidence(asString(rawProposal.confidence)),
+      warnings: asStringArray(rawProposal.warnings),
+      missingFields: asStringArray(rawProposal.missingFields),
+    }))
 
   return {
     status: asString(value.status) || 'needs_clarification',
     summary: asString(value.summary),
     warnings: asStringArray(value.warnings),
     questions: asStringArray(value.questions),
-    proposal: rawProposal
-      ? {
-          amount: asAmount(rawProposal.amount),
-          date: asString(rawProposal.date),
-          declaredMonth: asString(rawProposal.declaredMonth),
-          categoryId: asString(rawProposal.categoryId),
-          subcategoryId: asString(rawProposal.subcategoryId),
-          description: asString(rawProposal.description),
-          affectedUserIds: asStringArray(rawProposal.affectedUserIds),
-          confidence: asConfidence(asString(rawProposal.confidence)),
-          warnings: asStringArray(rawProposal.warnings),
-          missingFields: asStringArray(rawProposal.missingFields),
-        }
-      : null,
+    proposal: proposals[0] || null,
+    proposals,
   }
 }
 
