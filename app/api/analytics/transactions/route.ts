@@ -120,7 +120,10 @@ export async function POST(req: NextRequest) {
       query = query.range(from, from + body.limit - 1)
     }
 
-    const { data, error } = await query.order('dt_date', { ascending: false })
+    // Orden secundario por id para que la paginación (limit/offset) sea estable
+    const { data, error } = await query
+      .order('dt_date', { ascending: false })
+      .order('id_transaction', { ascending: true })
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -101,6 +101,248 @@ export type Database = {
           },
         ]
       }
+      gnp_fct_fund_movements: {
+        Row: {
+          ds_comments: string | null
+          ds_movement_type: string
+          dt_created: string
+          dt_movement: string
+          dt_updated: string
+          ft_amount: number
+          id_fund: string
+          id_fund_movement: string
+          id_monthly_close: string | null
+          id_rel_transaction_user: string | null
+          id_transaction: string | null
+          id_transfer_group: string | null
+          id_user: string | null
+          id_user_creator: string | null
+        }
+        Insert: {
+          ds_comments?: string | null
+          ds_movement_type: string
+          dt_created?: string
+          dt_movement?: string
+          dt_updated?: string
+          ft_amount: number
+          id_fund: string
+          id_fund_movement?: string
+          id_monthly_close?: string | null
+          id_rel_transaction_user?: string | null
+          id_transaction?: string | null
+          id_transfer_group?: string | null
+          id_user?: string | null
+          id_user_creator?: string | null
+        }
+        Update: {
+          ds_comments?: string | null
+          ds_movement_type?: string
+          dt_created?: string
+          dt_movement?: string
+          dt_updated?: string
+          ft_amount?: number
+          id_fund?: string
+          id_fund_movement?: string
+          id_monthly_close?: string | null
+          id_rel_transaction_user?: string | null
+          id_transaction?: string | null
+          id_transfer_group?: string | null
+          id_user?: string | null
+          id_user_creator?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gnp_fct_fund_movements_id_fund_fkey"
+            columns: ["id_fund"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_fund"
+            referencedColumns: ["id_fund"]
+          },
+          {
+            foreignKeyName: "gnp_fct_fund_movements_id_monthly_close_fkey"
+            columns: ["id_monthly_close"]
+            isOneToOne: false
+            referencedRelation: "gnp_fct_monthly_budget_close"
+            referencedColumns: ["id_monthly_close"]
+          },
+          {
+            foreignKeyName: "gnp_fct_fund_movements_id_rel_transaction_user_fkey"
+            columns: ["id_rel_transaction_user"]
+            isOneToOne: false
+            referencedRelation: "pml_rel_transaction_user"
+            referencedColumns: ["id_rel_transaction_user"]
+          },
+          {
+            foreignKeyName: "gnp_fct_fund_movements_id_transaction_fkey"
+            columns: ["id_transaction"]
+            isOneToOne: false
+            referencedRelation: "gnp_fct_transactions"
+            referencedColumns: ["id_transaction"]
+          },
+          {
+            foreignKeyName: "gnp_fct_fund_movements_id_user_creator_fkey"
+            columns: ["id_user_creator"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_user"
+            referencedColumns: ["id_user"]
+          },
+          {
+            foreignKeyName: "gnp_fct_fund_movements_id_user_fkey"
+            columns: ["id_user"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_user"
+            referencedColumns: ["id_user"]
+          },
+        ]
+      }
+      gnp_fct_monthly_budget_close: {
+        Row: {
+          ds_comments: string | null
+          ds_status: string
+          dt_confirmed: string | null
+          dt_created: string
+          dt_month: string
+          dt_updated: string
+          ft_monthly_actual_amount: number
+          ft_monthly_budget_amount: number
+          ft_monthly_delta_amount: number
+          id_family: string
+          id_monthly_close: string
+          id_user: string
+          id_user_confirmed_by: string | null
+        }
+        Insert: {
+          ds_comments?: string | null
+          ds_status?: string
+          dt_confirmed?: string | null
+          dt_created?: string
+          dt_month: string
+          dt_updated?: string
+          ft_monthly_actual_amount?: number
+          ft_monthly_budget_amount?: number
+          ft_monthly_delta_amount?: number
+          id_family: string
+          id_monthly_close?: string
+          id_user: string
+          id_user_confirmed_by?: string | null
+        }
+        Update: {
+          ds_comments?: string | null
+          ds_status?: string
+          dt_confirmed?: string | null
+          dt_created?: string
+          dt_month?: string
+          dt_updated?: string
+          ft_monthly_actual_amount?: number
+          ft_monthly_budget_amount?: number
+          ft_monthly_delta_amount?: number
+          id_family?: string
+          id_monthly_close?: string
+          id_user?: string
+          id_user_confirmed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gnp_fct_monthly_budget_close_id_family_fkey"
+            columns: ["id_family"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_family"
+            referencedColumns: ["id_family"]
+          },
+          {
+            foreignKeyName: "gnp_fct_monthly_budget_close_id_user_confirmed_by_fkey"
+            columns: ["id_user_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_user"
+            referencedColumns: ["id_user"]
+          },
+          {
+            foreignKeyName: "gnp_fct_monthly_budget_close_id_user_fkey"
+            columns: ["id_user"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_user"
+            referencedColumns: ["id_user"]
+          },
+        ]
+      }
+      gnp_fct_monthly_budget_close_detail: {
+        Row: {
+          dt_created: string
+          dt_updated: string
+          ft_actual_amount: number
+          ft_budget_amount: number
+          ft_delta_amount: number
+          id_budget_type: string
+          id_monthly_close: string
+          id_monthly_close_detail: string
+        }
+        Insert: {
+          dt_created?: string
+          dt_updated?: string
+          ft_actual_amount?: number
+          ft_budget_amount?: number
+          ft_delta_amount?: number
+          id_budget_type: string
+          id_monthly_close: string
+          id_monthly_close_detail?: string
+        }
+        Update: {
+          dt_created?: string
+          dt_updated?: string
+          ft_actual_amount?: number
+          ft_budget_amount?: number
+          ft_delta_amount?: number
+          id_budget_type?: string
+          id_monthly_close?: string
+          id_monthly_close_detail?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gnp_fct_monthly_budget_close_detail_id_budget_type_fkey"
+            columns: ["id_budget_type"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_budget_type"
+            referencedColumns: ["id_budget_type"]
+          },
+          {
+            foreignKeyName: "gnp_fct_monthly_budget_close_detail_id_monthly_close_fkey"
+            columns: ["id_monthly_close"]
+            isOneToOne: false
+            referencedRelation: "gnp_fct_monthly_budget_close"
+            referencedColumns: ["id_monthly_close"]
+          },
+        ]
+      }
+      gnp_fct_income_allocation: {
+        Row: {
+          dt_created: string
+          ft_amount: number
+          id_budget_subtype: string | null
+          id_budget_type: string | null
+          id_family: string
+          id_income_allocation: string
+          id_transaction: string
+        }
+        Insert: {
+          dt_created?: string
+          ft_amount: number
+          id_budget_subtype?: string | null
+          id_budget_type?: string | null
+          id_family: string
+          id_income_allocation?: string
+          id_transaction: string
+        }
+        Update: {
+          dt_created?: string
+          ft_amount?: number
+          id_budget_subtype?: string | null
+          id_budget_type?: string | null
+          id_family?: string
+          id_income_allocation?: string
+          id_transaction?: string
+        }
+        Relationships: []
+      }
       gnp_fct_transactions: {
         Row: {
           ds_comments: string | null
@@ -109,6 +351,8 @@ export type Database = {
           dt_date: string
           dt_updated: string | null
           ft_amount: number
+          id_budget_type: string | null
+          id_budget_subtype: string | null
           id_category: string | null
           id_family: string | null
           id_subcategory: string | null
@@ -123,6 +367,8 @@ export type Database = {
           dt_date: string
           dt_updated?: string | null
           ft_amount: number
+          id_budget_type?: string | null
+          id_budget_subtype?: string | null
           id_category?: string | null
           id_family?: string | null
           id_subcategory?: string | null
@@ -137,6 +383,8 @@ export type Database = {
           dt_date?: string
           dt_updated?: string | null
           ft_amount?: number
+          id_budget_type?: string | null
+          id_budget_subtype?: string | null
           id_category?: string | null
           id_family?: string | null
           id_subcategory?: string | null
@@ -145,6 +393,13 @@ export type Database = {
           id_user_creator?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "gnp_fct_transactions_id_budget_type_fkey"
+            columns: ["id_budget_type"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_budget_type"
+            referencedColumns: ["id_budget_type"]
+          },
           {
             foreignKeyName: "gnp_fct_transactions_id_category_fkey"
             columns: ["id_category"]
@@ -181,6 +436,303 @@ export type Database = {
             referencedColumns: ["id_user"]
           },
         ]
+      }
+      pml_cfg_budget_close: {
+        Row: {
+          dt_close_month: string
+          dt_created: string
+          ft_balance: number
+          ft_carried: number
+          ft_to_savings: number
+          id_budget_close: string
+          id_budget_type: string | null
+          id_family: string
+          id_user: string
+        }
+        Insert: {
+          dt_close_month: string
+          dt_created?: string
+          ft_balance?: number
+          ft_carried?: number
+          ft_to_savings?: number
+          id_budget_close?: string
+          id_budget_type?: string | null
+          id_family: string
+          id_user: string
+        }
+        Update: {
+          dt_close_month?: string
+          dt_created?: string
+          ft_balance?: number
+          ft_carried?: number
+          ft_to_savings?: number
+          id_budget_close?: string
+          id_budget_type?: string | null
+          id_family?: string
+          id_user?: string
+        }
+        Relationships: []
+      }
+      pml_cfg_budget_plan: {
+        Row: {
+          dt_created: string
+          dt_start_month: string
+          dt_updated: string
+          id_budget_plan: string
+          id_family: string
+          id_user: string
+          js_plan: Json
+        }
+        Insert: {
+          dt_created?: string
+          dt_start_month: string
+          dt_updated?: string
+          id_budget_plan?: string
+          id_family: string
+          id_user: string
+          js_plan: Json
+        }
+        Update: {
+          dt_created?: string
+          dt_start_month?: string
+          dt_updated?: string
+          id_budget_plan?: string
+          id_family?: string
+          id_user?: string
+          js_plan?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pml_cfg_budget_plan_id_family_fkey"
+            columns: ["id_family"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_family"
+            referencedColumns: ["id_family"]
+          },
+          {
+            foreignKeyName: "pml_cfg_budget_plan_id_user_fkey"
+            columns: ["id_user"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_user"
+            referencedColumns: ["id_user"]
+          },
+        ]
+      }
+      pml_cfg_spending_goal: {
+        Row: {
+          ds_comments: string | null
+          ds_periodicity: string
+          dt_created: string
+          dt_end_month: string
+          dt_start_month: string
+          dt_updated: string
+          ft_goal_amount: number
+          id_category: string | null
+          id_family: string
+          id_spending_goal: string
+          id_subcategory: string | null
+          id_user: string
+          is_active: boolean
+        }
+        Insert: {
+          ds_comments?: string | null
+          ds_periodicity: string
+          dt_created?: string
+          dt_end_month: string
+          dt_start_month: string
+          dt_updated?: string
+          ft_goal_amount: number
+          id_category?: string | null
+          id_family: string
+          id_spending_goal?: string
+          id_subcategory?: string | null
+          id_user: string
+          is_active?: boolean
+        }
+        Update: {
+          ds_comments?: string | null
+          ds_periodicity?: string
+          dt_created?: string
+          dt_end_month?: string
+          dt_start_month?: string
+          dt_updated?: string
+          ft_goal_amount?: number
+          id_category?: string | null
+          id_family?: string
+          id_spending_goal?: string
+          id_subcategory?: string | null
+          id_user?: string
+          is_active?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pml_cfg_spending_goal_id_category_fkey"
+            columns: ["id_category"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_category"
+            referencedColumns: ["id_category"]
+          },
+          {
+            foreignKeyName: "pml_cfg_spending_goal_id_family_fkey"
+            columns: ["id_family"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_family"
+            referencedColumns: ["id_family"]
+          },
+          {
+            foreignKeyName: "pml_cfg_spending_goal_id_subcategory_fkey"
+            columns: ["id_subcategory"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_subcategory"
+            referencedColumns: ["id_subcategory"]
+          },
+          {
+            foreignKeyName: "pml_cfg_spending_goal_id_user_fkey"
+            columns: ["id_user"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_user"
+            referencedColumns: ["id_user"]
+          },
+        ]
+      }
+      pml_cfg_user_budget: {
+        Row: {
+          ds_comments: string | null
+          dt_created: string
+          dt_end_month: string | null
+          dt_start_month: string
+          dt_updated: string
+          ft_budget_amount: number
+          id_budget_type: string
+          id_family: string
+          id_user: string
+          id_user_budget: string
+          is_active: boolean
+          is_period_amount: boolean
+        }
+        Insert: {
+          ds_comments?: string | null
+          dt_created?: string
+          dt_end_month?: string | null
+          dt_start_month: string
+          dt_updated?: string
+          ft_budget_amount: number
+          id_budget_type: string
+          id_family: string
+          id_user: string
+          id_user_budget?: string
+          is_active?: boolean
+          is_period_amount?: boolean
+        }
+        Update: {
+          ds_comments?: string | null
+          dt_created?: string
+          dt_end_month?: string | null
+          dt_start_month?: string
+          dt_updated?: string
+          ft_budget_amount?: number
+          id_budget_type?: string
+          id_family?: string
+          id_user?: string
+          id_user_budget?: string
+          is_active?: boolean
+          is_period_amount?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pml_cfg_user_budget_id_budget_type_fkey"
+            columns: ["id_budget_type"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_budget_type"
+            referencedColumns: ["id_budget_type"]
+          },
+          {
+            foreignKeyName: "pml_cfg_user_budget_id_family_fkey"
+            columns: ["id_family"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_family"
+            referencedColumns: ["id_family"]
+          },
+          {
+            foreignKeyName: "pml_cfg_user_budget_id_user_fkey"
+            columns: ["id_user"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_user"
+            referencedColumns: ["id_user"]
+          },
+        ]
+      }
+      pml_dim_budget_subtype: {
+        Row: {
+          ds_budget_subtype: string
+          dt_created: string
+          dt_updated: string
+          id_budget_subtype: string
+          id_budget_type: string
+          id_family: string
+          id_order: number
+          is_archived: boolean
+        }
+        Insert: {
+          ds_budget_subtype: string
+          dt_created?: string
+          dt_updated?: string
+          id_budget_subtype?: string
+          id_budget_type: string
+          id_family: string
+          id_order?: number
+          is_archived?: boolean
+        }
+        Update: {
+          ds_budget_subtype?: string
+          dt_created?: string
+          dt_updated?: string
+          id_budget_subtype?: string
+          id_budget_type?: string
+          id_family?: string
+          id_order?: number
+          is_archived?: boolean
+        }
+        Relationships: []
+      }
+      pml_dim_budget_type: {
+        Row: {
+          ds_budget_type: string
+          ds_budget_type_key: string
+          ds_periodicity: string
+          dt_created: string
+          dt_updated: string
+          id_budget_type: string
+          id_family: string | null
+          id_order: number
+          id_user: string | null
+          is_archived: boolean
+        }
+        Insert: {
+          ds_budget_type: string
+          ds_budget_type_key: string
+          ds_periodicity: string
+          dt_created?: string
+          dt_updated?: string
+          id_budget_type?: string
+          id_family?: string | null
+          id_order?: number
+          id_user?: string | null
+          is_archived?: boolean
+        }
+        Update: {
+          ds_budget_type?: string
+          ds_budget_type_key?: string
+          ds_periodicity?: string
+          dt_created?: string
+          dt_updated?: string
+          id_budget_type?: string
+          id_family?: string | null
+          id_order?: number
+          id_user?: string | null
+          is_archived?: boolean
+        }
+        Relationships: []
       }
       pml_dim_category: {
         Row: {
@@ -300,6 +852,82 @@ export type Database = {
           },
         ]
       }
+      pml_dim_fund: {
+        Row: {
+          ds_color: string | null
+          ds_fund: string
+          ds_icon: string | null
+          ds_scope: string
+          dt_created: string
+          dt_end_date: string | null
+          dt_start_date: string
+          dt_updated: string
+          ft_monthly_recommended_amount: number | null
+          ft_target_amount: number | null
+          id_budget_type: string | null
+          id_family: string
+          id_fund: string
+          id_user_owner: string | null
+          is_active: boolean
+        }
+        Insert: {
+          ds_color?: string | null
+          ds_fund: string
+          ds_icon?: string | null
+          ds_scope: string
+          dt_created?: string
+          dt_end_date?: string | null
+          dt_start_date: string
+          dt_updated?: string
+          ft_monthly_recommended_amount?: number | null
+          ft_target_amount?: number | null
+          id_budget_type?: string | null
+          id_family: string
+          id_fund?: string
+          id_user_owner?: string | null
+          is_active?: boolean
+        }
+        Update: {
+          ds_color?: string | null
+          ds_fund?: string
+          ds_icon?: string | null
+          ds_scope?: string
+          dt_created?: string
+          dt_end_date?: string | null
+          dt_start_date?: string
+          dt_updated?: string
+          ft_monthly_recommended_amount?: number | null
+          ft_target_amount?: number | null
+          id_budget_type?: string | null
+          id_family?: string
+          id_fund?: string
+          id_user_owner?: string | null
+          is_active?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pml_dim_fund_id_budget_type_fkey"
+            columns: ["id_budget_type"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_budget_type"
+            referencedColumns: ["id_budget_type"]
+          },
+          {
+            foreignKeyName: "pml_dim_fund_id_family_fkey"
+            columns: ["id_family"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_family"
+            referencedColumns: ["id_family"]
+          },
+          {
+            foreignKeyName: "pml_dim_fund_id_user_owner_fkey"
+            columns: ["id_user_owner"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_user"
+            referencedColumns: ["id_user"]
+          },
+        ]
+      }
       pml_dim_section: {
         Row: {
           ds_brain_region: string
@@ -355,9 +983,9 @@ export type Database = {
       }
       pml_dim_section_field: {
         Row: {
-          ds_field_type: string
           ds_field_description: string | null
           ds_field_options: string | null
+          ds_field_type: string
           ds_section_field: string
           dt_created: string
           dt_updated: string
@@ -366,9 +994,9 @@ export type Database = {
           id_section: string
         }
         Insert: {
-          ds_field_type: string
           ds_field_description?: string | null
           ds_field_options?: string | null
+          ds_field_type: string
           ds_section_field: string
           dt_created?: string
           dt_updated?: string
@@ -377,9 +1005,9 @@ export type Database = {
           id_section: string
         }
         Update: {
-          ds_field_type?: string
           ds_field_description?: string | null
           ds_field_options?: string | null
+          ds_field_type?: string
           ds_section_field?: string
           dt_created?: string
           dt_updated?: string
@@ -444,6 +1072,7 @@ export type Database = {
           dt_updated: string | null
           id_family: string | null
           id_tag: string
+          is_hidden: boolean
         }
         Insert: {
           ds_color?: string | null
@@ -453,6 +1082,7 @@ export type Database = {
           dt_updated?: string | null
           id_family?: string | null
           id_tag?: string
+          is_hidden?: boolean
         }
         Update: {
           ds_color?: string | null
@@ -462,6 +1092,7 @@ export type Database = {
           dt_updated?: string | null
           id_family?: string | null
           id_tag?: string
+          is_hidden?: boolean
         }
         Relationships: [
           {
@@ -550,6 +1181,93 @@ export type Database = {
           js_old_data?: Json | null
         }
         Relationships: []
+      }
+      pml_rel_fund_link: {
+        Row: {
+          dt_created: string
+          id_budget_type: string | null
+          id_category: string | null
+          id_family: string
+          id_fund: string
+          id_fund_link: string
+          id_subcategory: string | null
+        }
+        Insert: {
+          dt_created?: string
+          id_budget_type?: string | null
+          id_category?: string | null
+          id_family: string
+          id_fund: string
+          id_fund_link?: string
+          id_subcategory?: string | null
+        }
+        Update: {
+          dt_created?: string
+          id_budget_type?: string | null
+          id_category?: string | null
+          id_family?: string
+          id_fund?: string
+          id_fund_link?: string
+          id_subcategory?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pml_rel_fund_link_id_fund_fkey"
+            columns: ["id_fund"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_fund"
+            referencedColumns: ["id_fund"]
+          },
+        ]
+      }
+      pml_rel_subcategory_budget_type: {
+        Row: {
+          dt_created: string
+          dt_updated: string
+          id_budget_type: string
+          id_family: string
+          id_rel_subcategory_budget_type: string
+          id_subcategory: string
+        }
+        Insert: {
+          dt_created?: string
+          dt_updated?: string
+          id_budget_type: string
+          id_family: string
+          id_rel_subcategory_budget_type?: string
+          id_subcategory: string
+        }
+        Update: {
+          dt_created?: string
+          dt_updated?: string
+          id_budget_type?: string
+          id_family?: string
+          id_rel_subcategory_budget_type?: string
+          id_subcategory?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pml_rel_subcategory_budget_type_id_budget_type_fkey"
+            columns: ["id_budget_type"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_budget_type"
+            referencedColumns: ["id_budget_type"]
+          },
+          {
+            foreignKeyName: "pml_rel_subcategory_budget_type_id_family_fkey"
+            columns: ["id_family"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_family"
+            referencedColumns: ["id_family"]
+          },
+          {
+            foreignKeyName: "pml_rel_subcategory_budget_type_id_subcategory_fkey"
+            columns: ["id_subcategory"]
+            isOneToOne: false
+            referencedRelation: "pml_dim_subcategory"
+            referencedColumns: ["id_subcategory"]
+          },
+        ]
       }
       pml_rel_transaction_tag: {
         Row: {

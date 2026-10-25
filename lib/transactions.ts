@@ -2,10 +2,29 @@ import type { Database } from '@/types/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { convertMonthYearToDBFormat, formatMonthDeclared } from './date-utils'
 import { associateTagToTransaction } from './tags'
-import { associateUsersToTransaction } from './family'
 import type { TransactionInsert, TransactionUpdate } from '@/types/transactions'
 
 type Transaction = Database['public']['Tables']['gnp_fct_transactions']['Row']
+function splitAmountForUsers(totalAmount: number, userIds: string[]) {
+  const numUsers = userIds.length
+  const baseAmountPerUser = Math.floor((totalAmount / numUsers) * 100) / 100
+  const amounts: number[] = []
+  let sumSoFar = 0
+  
+  for (let i = 0; i < numUsers - 1; i++) {
+    amounts.push(baseAmountPerUser)
+    sumSoFar += baseAmountPerUser
+  }
+  
+  const lastAmount = Math.round((totalAmount - sumSoFar) * 100) / 100
+  amounts.push(lastAmount)
+
+  return userIds.map((id_user, index) => ({
+    id_transaction: '',
+    id_user,
+    ft_amount_user: amounts[index],
+  }))
+}
 
 /**
  * Crea una nueva transacción
@@ -59,41 +78,18 @@ export async function createTransaction(
   // Si hay usuarios, asociarlos a la transacción
   if (userIds && userIds.length > 0 && data) {
     try {
-      // Dividir el importe entre el número de usuarios
-      // Para evitar problemas de precisión, calculamos el amount para cada usuario
-      // y el último recibe el resto para asegurar que la suma sea exacta
-      const totalAmount = roundedAmount
-      const numUsers = userIds.length
-      const baseAmountPerUser = Math.floor((totalAmount / numUsers) * 100) / 100 // Redondear hacia abajo a 2 decimales
-      
-      // Calcular los amounts para cada usuario
-      const amounts: number[] = []
-      let sumSoFar = 0
-      
-      for (let i = 0; i < numUsers - 1; i++) {
-        amounts.push(baseAmountPerUser)
-        sumSoFar += baseAmountPerUser
-      }
-      
-      // El último usuario recibe el resto para que la suma sea exacta
-      const lastAmount = Math.round((totalAmount - sumSoFar) * 100) / 100
-      amounts.push(lastAmount)
-      
-      // Crear las relaciones con los amounts calculados
-      const relations = userIds.map((id_user, index) => ({
+      const relations = splitAmountForUsers(roundedAmount, userIds).map((relation) => ({
+        ...relation,
         id_transaction: data.id_transaction,
-        id_user: id_user,
-        ft_amount_user: amounts[index],
       }))
       
-      const { error } = await supabase
-        .from('pml_rel_transaction_user')
-        .insert(relations)
-      
+      const { error } = await supabase.from('pml_rel_transaction_user').insert(relations)
+
       if (error) {
         console.error('Error al asociar usuarios a transacción:', error)
         throw error
       }
+
     } catch (userError) {
       console.error('Error al asociar usuarios a transacción:', userError)
       // No lanzamos el error para no fallar la creación de la transacción
@@ -339,29 +335,13 @@ export async function updateTransactionComplete(
 
   if (userIds && userIds.length > 0) {
     const totalAmount = updateData.ft_amount !== undefined ? updateData.ft_amount : updated.ft_amount
-    const numUsers = userIds.length
-    const baseAmountPerUser = Math.floor((totalAmount / numUsers) * 100) / 100
-    const amounts: number[] = []
-    let sumSoFar = 0
-    
-    for (let i = 0; i < numUsers - 1; i++) {
-      amounts.push(baseAmountPerUser)
-      sumSoFar += baseAmountPerUser
-    }
-    
-    const lastAmount = Math.round((totalAmount - sumSoFar) * 100) / 100
-    amounts.push(lastAmount)
-    
-    const relations = userIds.map((id_user, index) => ({
+    const relations = splitAmountForUsers(totalAmount, userIds).map((relation) => ({
+      ...relation,
       id_transaction: idTransaction,
-      id_user: id_user,
-      ft_amount_user: amounts[index],
     }))
     
-    const { error } = await supabase
-      .from('pml_rel_transaction_user')
-      .insert(relations)
-    
+    const { error } = await supabase.from('pml_rel_transaction_user').insert(relations)
+
     if (error) {
       console.error('Error al actualizar usuarios de transacción:', error)
       throw error
@@ -380,6 +360,16 @@ export async function deleteTransaction(
   supabase: SupabaseClient<Database>,
   idTransaction: string
 ): Promise<void> {
+  // Los fondos ya no existen en la app, pero si quedan movimientos antiguos en la BD se borran antes (si la tabla existe)
+  const { error: movementsError } = await supabase
+    .from('gnp_fct_fund_movements')
+    .delete()
+    .eq('id_transaction', idTransaction)
+
+  if (movementsError) {
+    console.warn('No se pudieron limpiar movimientos de fondos antiguos:', movementsError.message)
+  }
+
   const { error } = await supabase
     .from('gnp_fct_transactions')
     .delete()

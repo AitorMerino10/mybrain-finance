@@ -86,3 +86,26 @@ export async function associateTagToTransaction(
 }
 
 
+
+/**
+ * Oculta o muestra una tag en el buscador de transacciones
+ */
+export async function setTagHidden(
+  supabase: SupabaseClient<Database>,
+  idTag: string,
+  hidden: boolean
+): Promise<Tag> {
+  const { data, error } = await supabase
+    .from('pml_dim_tag')
+    .update({ is_hidden: hidden })
+    .eq('id_tag', idTag)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error al actualizar tag:', error)
+    throw error
+  }
+
+  return data
+}

@@ -10,9 +10,20 @@ import {
 import { getTagsByFamily } from '@/lib/tags'
 import { getFamilyMembers, type FamilyMember } from '@/lib/family'
 import { createTransaction } from '@/lib/transactions'
+import { replaceIncomeAllocations, type AllocationRow } from '@/lib/income-allocations'
+import IncomeAllocationEditor, { allocationIsValid } from './IncomeAllocationEditor'
+import {
+  budgetTypesForUsers,
+  getBudgetSubtypes,
+  getBudgetTypes,
+  getSubcategoryBudgetDefaults,
+  type BudgetSubtype,
+  type BudgetType,
+  type SubcategoryBudgetDefault,
+} from '@/lib/budgets'
 import { getTodayISOString, getCurrentMonthYear } from '@/lib/date-utils'
 import { validateTransactionForm } from '@/types/transactions'
-import { createLocalTransaction, isLocalhost } from '@/lib/local-transactions'
+import { trackTestTransaction } from '@/lib/test-records'
 import type {
   TransactionTypeName,
   Category,
@@ -23,6 +34,7 @@ import type {
 import CategoryModal from './CategoryModal'
 import SubcategoryModal from './SubcategoryModal'
 import TagModal from './TagModal'
+import TagPicker from './TagPicker'
 import HelpTooltip from './HelpTooltip'
 
 interface TransactionFormProps {
@@ -48,6 +60,7 @@ export default function TransactionForm({
     dt_date: getTodayISOString(),
     ds_month_declared: getCurrentMonthYear(),
     id_tag: null,
+    id_budget_type: null,
     selectedUsers: [],
     ds_comments: null,
   })
@@ -55,6 +68,11 @@ export default function TransactionForm({
   const [categories, setCategories] = useState<Category[]>([])
   const [subcategories, setSubcategories] = useState<Subcategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
+  const [budgetTypes, setBudgetTypes] = useState<BudgetType[]>([])
+  const [budgetSubtypes, setBudgetSubtypes] = useState<BudgetSubtype[]>([])
+  // Reparto personalizado del ingreso entre partidas (null = por defecto, no se guarda nada)
+  const [incomeAllocation, setIncomeAllocation] = useState<AllocationRow[] | null>(null)
+  const [budgetDefaults, setBudgetDefaults] = useState<SubcategoryBudgetDefault[]>([])
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const submitModeRef = useRef<'save' | 'saveAndNew'>('save')
   const [loading, setLoading] = useState(false)
@@ -96,6 +114,14 @@ export default function TransactionForm({
         // Cargar tags de la familia
         const tagsData = await getTagsByFamily(supabase, idFamily)
         setTags(tagsData)
+
+        const [budgetTypesData, budgetDefaultsData] = await Promise.all([
+          getBudgetTypes(supabase, idFamily),
+          getSubcategoryBudgetDefaults(supabase, idFamily),
+        ])
+        setBudgetTypes(budgetTypesData)
+        setBudgetSubtypes((await getBudgetSubtypes(supabase, idFamily)).subtypes)
+        setBudgetDefaults(budgetDefaultsData)
 
         // Cargar miembros de la familia
         const membersData = await getFamilyMembers(supabase, idFamily)
@@ -162,12 +188,27 @@ export default function TransactionForm({
     loadSubcategories()
   }, [formData.id_category, formData.id_subcategory, transactionType])
 
+  const getUsersToAssociate = () =>
+    familyMembers.length > 1
+      ? formData.selectedUsers
+      : [familyMembers[0]?.id_user].filter((id): id is string => Boolean(id))
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Validar formulario (solo requerir usuarios si hay más de uno en la familia)
     const requireUsers = familyMembers.length > 1
     const validationErrors = validateTransactionForm(formData, requireUsers)
+    const usersToAssociate = getUsersToAssociate()
+
+    if (transactionType === 'Expense' && !formData.id_budget_type) {
+      validationErrors.id_budget_type = 'Selecciona una partida de presupuesto'
+    }
+
+    if (transactionType === 'Income' && !allocationIsValid(incomeAllocation, formData.ft_amount)) {
+      validationErrors.incomeAllocation = 'El reparto entre partidas supera el importe del ingreso'
+    }
+
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
       return
@@ -186,42 +227,43 @@ export default function TransactionForm({
       }
       const amountToSend = roundToTwoDecimals(formData.ft_amount)
       
-      // Determinar usuarios a asociar (si hay más de uno en la familia, usar los seleccionados)
-      const usersToAssociate =
-        familyMembers.length > 1 ? formData.selectedUsers : [familyMembers[0]?.id_user].filter(Boolean)
-      
-      if (isLocalhost()) {
-        createLocalTransaction({
-          id_family: idFamily,
-          id_user_creator: idUser,
+      const created = await createTransaction(
+        supabase,
+        {
           id_type: formData.id_type,
           id_category: formData.id_category,
           id_subcategory: formData.id_subcategory,
           ft_amount: amountToSend,
           dt_date: formData.dt_date,
-          ds_month_declared: formData.ds_month_declared,
-          id_tag: formData.id_tag || null,
           ds_comments: formData.ds_comments || null,
-          transactionType,
-          userIds: usersToAssociate.length > 0 ? usersToAssociate : undefined,
-        })
-      } else {
-        await createTransaction(
-          supabase,
-          {
-            id_type: formData.id_type,
-            id_category: formData.id_category,
-            id_subcategory: formData.id_subcategory,
-            ft_amount: amountToSend,
-            dt_date: formData.dt_date,
-            ds_comments: formData.ds_comments || null,
-            id_family: idFamily,
-            id_user_creator: idUser,
-          },
-          formData.ds_month_declared,
-          formData.id_tag || undefined,
-          usersToAssociate.length > 0 ? usersToAssociate : undefined
-        )
+          id_family: idFamily,
+          id_user_creator: idUser,
+          id_budget_type: transactionType === 'Expense' ? formData.id_budget_type : null,
+          // Solo se envía si hay subpartida: así funciona también antes de ejecutar la migración
+          ...(transactionType === 'Expense' && formData.id_budget_subtype
+            ? { id_budget_subtype: formData.id_budget_subtype }
+            : {}),
+        },
+        formData.ds_month_declared,
+        formData.id_tag || undefined,
+        usersToAssociate.length > 0 ? usersToAssociate : undefined
+      )
+      trackTestTransaction(created.id_transaction)
+
+      // Reparto personalizado del ingreso entre partidas (si no se toca, se calcula con el presupuesto y no se guarda)
+      if (transactionType === 'Income' && incomeAllocation !== null) {
+        try {
+          await replaceIncomeAllocations(supabase, {
+            idFamily,
+            idTransaction: created.id_transaction,
+            rows: incomeAllocation,
+          })
+        } catch (allocationError) {
+          console.error('Error al guardar el reparto del ingreso:', allocationError)
+          throw new Error(
+            'El ingreso se ha creado, pero no se pudo guardar el reparto entre partidas (¿falta ejecutar la migración 20261026130000?). Edítalo para repartirlo.'
+          )
+        }
       }
 
       // Resetear formulario - mantener usuario logueado seleccionado
@@ -236,10 +278,13 @@ export default function TransactionForm({
         dt_date: getTodayISOString(),
         ds_month_declared: getCurrentMonthYear(),
         id_tag: null,
+        id_budget_type: null,
+        id_budget_subtype: null,
         selectedUsers: initialSelectedUsers,
         ds_comments: null,
       })
       setAmountInputValue('')
+      setIncomeAllocation(null)
       setSubcategories([])
       setErrors({})
 
@@ -464,6 +509,8 @@ export default function TransactionForm({
                   ...prev,
                   id_category: e.target.value || null,
                   id_subcategory: null,
+                  id_budget_type: transactionType === 'Expense' ? null : prev.id_budget_type,
+                  id_budget_subtype: transactionType === 'Expense' ? null : prev.id_budget_subtype,
                 }))
               }
               disabled={loadingCategories || loading}
@@ -510,12 +557,21 @@ export default function TransactionForm({
               <select
                 id="subcategory"
                 value={formData.id_subcategory || ''}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const idSubcategory = e.target.value || null
+                  const budgetDefault = idSubcategory
+                    ? budgetDefaults.find(
+                        (item) => item.id_subcategory === idSubcategory
+                      )
+                    : null
                   setFormData((prev) => ({
                     ...prev,
-                    id_subcategory: e.target.value || null,
+                    id_subcategory: idSubcategory,
+                    id_budget_type:
+                      budgetDefault?.id_budget_type || prev.id_budget_type,
+                    id_budget_subtype: budgetDefault?.id_budget_type ? null : prev.id_budget_subtype,
                   }))
-                }
+                }}
                 disabled={loadingSubcategories || loading}
                 className="block w-full pl-10 sm:pl-12 pr-20 sm:pr-24 py-3 sm:py-3.5 text-sm sm:text-base border border-gray-200 rounded-xl bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 shadow-sm hover:border-gray-300 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500 appearance-none"
               >
@@ -544,6 +600,98 @@ export default function TransactionForm({
               <p className="mt-1 text-sm text-red-600 font-medium">{errors.id_subcategory}</p>
             )}
           </div>
+        )}
+
+        {transactionType === 'Expense' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label
+                htmlFor="budgetType"
+                className="block text-sm font-semibold text-gray-700"
+              >
+                Partida de presupuesto *
+              </label>
+              <select
+                id="budgetType"
+                value={formData.id_budget_type || ''}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    id_budget_type: e.target.value || null,
+                    id_budget_subtype: null,
+                  }))
+                }
+                disabled={loading}
+                className="block w-full px-4 py-3.5 text-sm sm:text-base border border-gray-200 rounded-xl bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 shadow-sm hover:border-gray-300 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
+              >
+                <option value="">Selecciona partida</option>
+                {budgetTypes
+                  .filter((budgetType) => budgetType.id_budget_type === formData.id_budget_type || budgetTypesForUsers([budgetType], formData.selectedUsers).length > 0)
+                  .map((budgetType) => (
+                  <option key={budgetType.id_budget_type} value={budgetType.id_budget_type}>
+                    {budgetType.ds_budget_type}
+                  </option>
+                ))}
+              </select>
+              {errors.id_budget_type && (
+                <p className="mt-1 text-sm text-red-600 font-medium">{errors.id_budget_type}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="budgetSubtype"
+                className="block text-sm font-semibold text-gray-700"
+              >
+                Subpartida
+              </label>
+              <select
+                id="budgetSubtype"
+                value={formData.id_budget_subtype || ''}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, id_budget_subtype: e.target.value || null }))
+                }
+                disabled={
+                  loading ||
+                  !formData.id_budget_type ||
+                  !budgetSubtypes.some((sub) => sub.id_budget_type === formData.id_budget_type)
+                }
+                className="block w-full px-4 py-3.5 text-sm sm:text-base border border-gray-200 rounded-xl bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 shadow-sm hover:border-gray-300 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
+              >
+                <option value="">
+                  {!formData.id_budget_type
+                    ? 'Elige antes la partida'
+                    : budgetSubtypes.some((sub) => sub.id_budget_type === formData.id_budget_type)
+                      ? 'Sin subpartida'
+                      : 'Esta partida no tiene subpartidas'}
+                </option>
+                {budgetSubtypes
+                  .filter((sub) => sub.id_budget_type === formData.id_budget_type)
+                  .map((sub) => (
+                    <option key={sub.id_budget_subtype} value={sub.id_budget_subtype}>
+                      {sub.ds_budget_subtype}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {transactionType === 'Income' && (
+          <>
+            <IncomeAllocationEditor
+              idFamily={idFamily}
+              amount={formData.ft_amount}
+              userIds={getUsersToAssociate()}
+              monthDeclared={formData.ds_month_declared}
+              value={incomeAllocation}
+              onChange={setIncomeAllocation}
+              disabled={loading}
+            />
+            {errors.incomeAllocation && (
+              <p className="text-sm font-medium text-red-600">{errors.incomeAllocation}</p>
+            )}
+          </>
         )}
 
         {/* Grid para fecha y mes declarado */}
@@ -631,25 +779,14 @@ export default function TransactionForm({
             <HelpTooltip content="Agrupa gastos para luego poder analizarlos (un viaje, todas las bodas de tus amigos, etc)." />
           </label>
           <div className="mt-1 flex gap-2">
-            <select
+            <TagPicker
               id="tag"
-              value={formData.id_tag || ''}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  id_tag: e.target.value || null,
-                }))
-              }
+              tags={tags}
+              value={formData.id_tag || null}
+              onChange={(idTag) => setFormData((prev) => ({ ...prev, id_tag: idTag }))}
+              onTagUpdated={(updated) => setTags((prev) => prev.map((tag) => (tag.id_tag === updated.id_tag ? updated : tag)))}
               disabled={loadingTags || loading}
-              className="flex-1 rounded-md border border-gray-300 px-3 py-2.5 text-base shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 touch-manipulation"
-            >
-              <option value="">Sin tag</option>
-              {tags.map((tag) => (
-                <option key={tag.id_tag} value={tag.id_tag}>
-                  {tag.ds_tag}
-                </option>
-              ))}
-            </select>
+            />
             <button
               type="button"
               onClick={() => setShowTagModal(true)}

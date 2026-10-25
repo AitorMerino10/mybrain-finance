@@ -24,7 +24,7 @@ export default function AuthCallback() {
         console.log('✅ Sesión ya activa encontrada, redirigiendo...')
         hasProcessed.current = true
         setTimeout(() => {
-          window.location.href = '/'
+          window.location.href = '/mybrain'
         }, 500)
         return
       }
@@ -40,7 +40,7 @@ export default function AuthCallback() {
             console.log('✅ Sesión encontrada en segundo intento')
             hasProcessed.current = true
             setTimeout(() => {
-              window.location.href = '/'
+              window.location.href = '/mybrain'
             }, 500)
           } else {
             console.error('❌ No hay hash ni sesión activa')
@@ -131,8 +131,8 @@ export default function AuthCallback() {
           
           // Usar window.location.href para forzar recarga completa y que el middleware lea las cookies
           setTimeout(() => {
-            console.log('🔄 Redirigiendo a /dashboard')
-            window.location.href = '/'
+            console.log('🔄 Redirigiendo a /mybrain')
+            window.location.href = '/mybrain'
           }, 1000)
         } else {
           console.error('❌ No se pudo establecer la sesión')

@@ -14,6 +14,7 @@ export type SubcategoryInsert = Database['public']['Tables']['pml_dim_subcategor
 export type TransactionType = Database['public']['Tables']['pml_dim_transaction_type']['Row']
 
 export type Tag = Database['public']['Tables']['pml_dim_tag']['Row']
+export type BudgetType = Database['public']['Tables']['pml_dim_budget_type']['Row']
 
 // Tipos para el formulario
 export type TransactionFormData = {
@@ -24,6 +25,9 @@ export type TransactionFormData = {
   dt_date: string
   ds_month_declared: string // Formato MM-YYYY
   id_tag: string | null
+  id_budget_type: string | null
+  /** Subpartida de la partida (opcional) */
+  id_budget_subtype?: string | null
   selectedUsers: string[] // IDs de usuarios afectados
   ds_comments: string | null
 }
@@ -40,6 +44,8 @@ export type TransactionFormErrors = {
   dt_date?: string
   ds_month_declared?: string
   id_tag?: string
+  id_budget_type?: string
+  incomeAllocation?: string
   selectedUsers?: string
   ds_comments?: string
 }

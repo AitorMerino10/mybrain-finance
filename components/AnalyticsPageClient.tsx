@@ -26,12 +26,8 @@ import { formatCurrency, formatDate } from '@/lib/format'
 import Link from 'next/link'
 import EditTransactionModal from './EditTransactionModal'
 import HelpTooltip from './HelpTooltip'
-import {
-  deleteLocalTransaction,
-  getLocalTransactions,
-  isLocalhost,
-  mapLocalTransactionsToRelations,
-} from '@/lib/local-transactions'
+import BudgetAnalyticsTab from './budget-analytics/BudgetAnalyticsTab'
+import LocalModeBanner from './LocalModeBanner'
 import {
   BarChart,
   Bar,
@@ -54,6 +50,7 @@ interface AnalyticsPageClientProps {
   familyMembers: FamilyMember[]
   categories: Category[]
   tags: Tag[]
+  initialSection?: ActiveSection
 }
 
 // Colores pastel de la home page
@@ -100,7 +97,7 @@ function SkeletonCard() {
 }
 
 type ChartViewType = 'income-expense-benefit' | 'categories' | 'subcategories'
-type ActiveSection = 'general' | 'details' | 'comparator'
+type ActiveSection = 'general' | 'details' | 'comparator' | 'budgets'
 
 export default function AnalyticsPageClient({
   idFamily,
@@ -108,10 +105,11 @@ export default function AnalyticsPageClient({
   familyMembers,
   categories: initialCategories,
   tags: initialTags,
+  initialSection,
 }: AnalyticsPageClientProps) {
   // Estados principales
   const [loading, setLoading] = useState(true)
-  const [activeSection, setActiveSection] = useState<ActiveSection>('general')
+  const [activeSection, setActiveSection] = useState<ActiveSection>(initialSection ?? 'general')
   const [chartViewType, setChartViewType] = useState<ChartViewType>('income-expense-benefit')
   const [benefitChartMode, setBenefitChartMode] = useState<'bar' | 'line'>('bar')
 
@@ -196,41 +194,32 @@ export default function AnalyticsPageClient({
         endMonth: null,
       }
       
-      if (isLocalhost()) {
-        const localRaw = getLocalTransactions().filter(t => t.id_family === idFamily)
-        const categoryIds = Array.from(
-          new Set(localRaw.map(t => t.id_category).filter((id): id is string => !!id))
-        )
-        const subcategoriesList = await Promise.all(
-          categoryIds.map(id => getSubcategoriesByCategory(supabase, id))
-        )
-        const subcategories = subcategoriesList.flat()
-        const mapped = mapLocalTransactionsToRelations({
-          transactions: localRaw,
-          categories: initialCategories,
-          subcategories,
-          tags: initialTags,
-          familyMembers,
-        })
-        setAllTransactionsRaw(mapped)
-      } else {
+      // La API devuelve como máximo 1000 filas por llamada, así que se pagina
+      const pageSize = 500
+      const collected = new Map<string, TransactionWithRelations>()
+      let offset = 0
+      while (true) {
         const response = await fetch('/api/analytics/transactions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(filtersToUse),
+          body: JSON.stringify({ ...filtersToUse, limit: pageSize, offset }),
         })
         const data = await response.json()
         if (!response.ok) {
           throw new Error(data.error || 'Error al cargar transacciones')
         }
-        setAllTransactionsRaw(data.transactions || [])
+        const page = (data.transactions || []) as TransactionWithRelations[]
+        page.forEach((transaction) => collected.set(transaction.id_transaction, transaction))
+        if (page.length < pageSize) break
+        offset += pageSize
       }
+      setAllTransactionsRaw(Array.from(collected.values()))
     } catch (err) {
       console.error('Error al cargar datos:', err)
     } finally {
       setLoading(false)
     }
-  }, [idFamily, initialCategories, initialTags])
+  }, [idFamily])
 
   // Aplicar filtros en el frontend
   const applyFilters = useCallback(() => {
@@ -603,11 +592,7 @@ export default function AnalyticsPageClient({
     }
 
     try {
-      if (isLocalhost()) {
-        deleteLocalTransaction(idTransaction)
-      } else {
-        await deleteTransaction(supabase, idTransaction)
-      }
+      await deleteTransaction(supabase, idTransaction)
       // Recargar datos
       await loadAllData()
     } catch (err) {
@@ -667,6 +652,8 @@ export default function AnalyticsPageClient({
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <LocalModeBanner />
+
         {/* Header */}
         <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-3">
@@ -680,7 +667,7 @@ export default function AnalyticsPageClient({
               </svg>
             </Link>
           <div>
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold italic text-gray-900 mb-1.5">
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900 mb-1">
               Analítica
             </h1>
             <p className="text-sm sm:text-base text-gray-500">
@@ -702,6 +689,7 @@ export default function AnalyticsPageClient({
         </div>
 
         {/* KPIs Globales */}
+        {activeSection !== 'budgets' && (
         <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
           <div className="bg-gray-50 rounded-2xl shadow-sm border border-gray-100 relative p-2 sm:p-5 md:p-6">
             <div className="mb-1 sm:mb-2 min-h-[24px] sm:min-h-0">
@@ -730,9 +718,10 @@ export default function AnalyticsPageClient({
             </p>
           </div>
         </div>
+        )}
 
         {/* Filtros */}
-        {(activeSection !== 'comparator' || filters.dateFrom || filters.dateTo || filters.startMonth || filters.endMonth) && (
+        {((activeSection !== 'comparator' && activeSection !== 'budgets') || filters.dateFrom || filters.dateTo || filters.startMonth || filters.endMonth) && (
           <>
             {/* Desktop: Filtros visibles */}
             <div className="hidden lg:block mb-6">
@@ -778,36 +767,46 @@ export default function AnalyticsPageClient({
 
         {/* Tabs de Secciones */}
         <div className="mb-6">
-          <div className="flex gap-2 border-b border-gray-200">
+          <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-xl bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
                 <button
               onClick={() => setActiveSection('general')}
-              className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+              className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all ${
                 activeSection === 'general'
-                  ? 'border-[#90EBD6] text-[#0d9488]'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
               }`}
             >
               General
                 </button>
                 <button
               onClick={() => setActiveSection('details')}
-              className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+              className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all ${
                 activeSection === 'details'
-                  ? 'border-[#90EBD6] text-[#0d9488]'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
               }`}
             >
               Detalle
                 </button>
                 <button
               onClick={() => setActiveSection('comparator')}
-              className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+              className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all ${
                 activeSection === 'comparator'
-                  ? 'border-[#90EBD6] text-[#0d9488]'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
               }`}
                 >
                   Comparador
+                </button>
+                <button
+              onClick={() => setActiveSection('budgets')}
+              className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                activeSection === 'budgets'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+                >
+                  Presupuestos
                 </button>
           </div>
         </div>
@@ -1337,6 +1336,11 @@ export default function AnalyticsPageClient({
             familyMembers={familyMembers}
           />
           </div>
+        )}
+
+        {/* Sección Presupuestos */}
+        {activeSection === 'budgets' && (
+          <BudgetAnalyticsTab idFamily={idFamily} idUser={idUser} />
         )}
 
         {/* Modal de edición */}

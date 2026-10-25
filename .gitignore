@@ -37,3 +37,7 @@ next-env.d.ts
 
 
 
+
+# datos exportados y estado local de la CLI de Supabase
+/exports/
+/supabase/.temp/

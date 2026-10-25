@@ -3,17 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { calculateMonthlySummary, calculateCategorySummary, deleteTransaction, type TransactionWithRelations } from '@/lib/transactions'
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+import { calculateMonthlySummary, type TransactionWithRelations } from '@/lib/transactions'
+import HomeBudgetOverview from './HomeBudgetOverview'
 import TransactionForm from './TransactionForm'
 import type { TransactionTypeName } from '@/types/transactions'
 import { formatCurrency, formatDate } from '@/lib/format'
-import { getFamilyMembers, type FamilyMember } from '@/lib/family'
-import { getAllCategoriesByFamily } from '@/lib/categories'
-import { getTagsByFamily } from '@/lib/tags'
-import type { Category, Tag } from '@/types/transactions'
-import EditTransactionModal from './EditTransactionModal'
-import { deleteLocalTransaction, getLocalTransactionsForHome, isLocalhost } from '@/lib/local-transactions'
+import LocalModeBanner from './LocalModeBanner'
 
 interface HomePageClientProps {
   idFamily: string
@@ -49,17 +44,8 @@ export default function HomePageClient({
   const [loading, setLoading] = useState(true)
   const [currentMonthBenefit, setCurrentMonthBenefit] = useState(0)
   const [previousMonthBenefit, setPreviousMonthBenefit] = useState(0)
-  const [currentMonthExpenses, setCurrentMonthExpenses] = useState(0)
-  const [expenseCategories, setExpenseCategories] = useState<Array<{ id_category: string; ds_category: string; total: number; percentage: number }>>([])
-  const [top5Expenses, setTop5Expenses] = useState<TransactionWithRelations[]>([])
-  const [last7DaysExpenses, setLast7DaysExpenses] = useState<TransactionWithRelations[]>([])
-  const [activeTooltip, setActiveTooltip] = useState<{ x: number; y: number; data: any } | null>(null)
   const [showTransactionForm, setShowTransactionForm] = useState(showNewTransaction)
   const [selectedTransactionType, setSelectedTransactionType] = useState<TransactionTypeName>('Expense')
-  const [editingTransaction, setEditingTransaction] = useState<TransactionWithRelations | null>(null)
-  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [tags, setTags] = useState<Tag[]>([])
 
   // Sincronizar con prop
   useEffect(() => {
@@ -71,46 +57,29 @@ export default function HomePageClient({
       try {
         setLoading(true)
 
-        const [members, categoriesData, tagsData] = await Promise.all([
-          getFamilyMembers(supabase, idFamily),
-          getAllCategoriesByFamily(supabase, idFamily),
-          getTagsByFamily(supabase, idFamily),
-        ])
         let transactions: TransactionWithRelations[] = []
 
-        if (isLocalhost()) {
-          transactions = getLocalTransactionsForHome({
+        const transactionsResponse = await fetch('/api/analytics/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             idFamily,
-            idUser,
-            categories: categoriesData,
-            tags: tagsData,
-          })
-        } else {
-          const transactionsResponse = await fetch('/api/analytics/transactions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              idFamily,
-              idUsers: [idUser],
-              idCategories: null,
-              idSubcategories: null,
-              idTags: null,
-              monthsDeclared: null,
-              dateFrom: null,
-              dateTo: null,
-              startMonth: null,
-              endMonth: null,
-            }),
-          })
-          const data = await transactionsResponse.json()
-          if (!transactionsResponse.ok) {
-            throw new Error(data.error || 'Error al cargar transacciones')
-          }
-          transactions = (data.transactions || []) as TransactionWithRelations[]
+            idUsers: [idUser],
+            idCategories: null,
+            idSubcategories: null,
+            idTags: null,
+            monthsDeclared: null,
+            dateFrom: null,
+            dateTo: null,
+            startMonth: null,
+            endMonth: null,
+          }),
+        })
+        const data = await transactionsResponse.json()
+        if (!transactionsResponse.ok) {
+          throw new Error(data.error || 'Error al cargar transacciones')
         }
-        setFamilyMembers(members)
-        setCategories(categoriesData)
-        setTags(tagsData)
+        transactions = (data.transactions || []) as TransactionWithRelations[]
 
         // Obtener mes actual y anterior
         const currentMonth = getCurrentMonth()
@@ -126,33 +95,6 @@ export default function HomePageClient({
 
         setCurrentMonthBenefit(currentSummary[0]?.benefit || 0)
         setPreviousMonthBenefit(previousSummary[0]?.benefit || 0)
-
-        // Calcular gastos del mes actual
-        const currentExpenses = currentMonthTransactions
-          .filter(t => t.transactionType === 'Expense')
-          .reduce((sum, t) => sum + (t.ft_amount || 0), 0)
-        setCurrentMonthExpenses(currentExpenses)
-
-        // Calcular categorías de gastos del mes actual
-        const expenseTransactions = currentMonthTransactions.filter(t => t.transactionType === 'Expense')
-        const categories = calculateCategorySummary(expenseTransactions, null, 'Expense')
-        setExpenseCategories(categories)
-
-        // Top 5 gastos del mes actual
-        const top5 = expenseTransactions
-          .sort((a, b) => (b.ft_amount || 0) - (a.ft_amount || 0))
-          .slice(0, 5)
-        setTop5Expenses(top5)
-
-        // Gastos últimos 7 días (incluido hoy) ordenados por fecha descendente
-        const today = new Date()
-        const startDate = new Date(today)
-        startDate.setDate(today.getDate() - 6)
-        const last7Days = transactions
-          .filter(t => t.transactionType === 'Expense')
-          .filter(t => new Date(t.dt_date) >= startDate)
-          .sort((a, b) => new Date(b.dt_date).getTime() - new Date(a.dt_date).getTime())
-        setLast7DaysExpenses(last7Days)
       } catch (error) {
         console.error('Error al cargar datos:', error)
       } finally {
@@ -162,23 +104,6 @@ export default function HomePageClient({
 
     loadData()
   }, [idFamily, idUser])
-
-  const handleDeleteTransaction = async (idTransaction: string) => {
-    if (!confirm('¿Estás seguro de borrar esta transacción?')) {
-      return
-    }
-    try {
-      if (isLocalhost()) {
-        deleteLocalTransaction(idTransaction)
-      } else {
-        await deleteTransaction(supabase, idTransaction)
-      }
-      setTimeout(() => window.location.reload(), 100)
-    } catch (error) {
-      console.error('Error al borrar transacción:', error)
-      alert('Error al borrar la transacción. Por favor, inténtalo de nuevo.')
-    }
-  }
 
   // Skeleton component
   const SkeletonCard = () => (
@@ -213,26 +138,6 @@ export default function HomePageClient({
       </div>
     )
   }
-
-  const colorsArray = [
-    '#90EBD6', // brand primary
-    '#A8D5E2', // pastel blue
-    '#FFD3A5', // pastel orange
-    '#C7CEEA', // pastel purple
-    '#d9ead3', // pastel green
-    '#FFB6C1', // light pink
-    '#DDA0DD', // plum
-    '#f18a8a', // pastel red (última opción)
-  ]
-
-  // Colores para Top 5 - gradiente rojo a amarillo (pastel)
-  const top5Colors = [
-    '#f8a5a5', // rojo pastel
-    '#f5b895', // naranja pastel
-    '#f4d03f', // amarillo pastel
-    '#f9e79f', // amarillo suave pastel
-    '#fef9e7', // amarillo muy claro pastel (con texto oscuro)
-  ]
 
   // Si se está mostrando el formulario de transacción
   if (showTransactionForm) {
@@ -347,20 +252,21 @@ export default function HomePageClient({
 
   return (
     <div className="space-y-6 sm:space-y-8 pt-4 sm:pt-6">
-      {/* Header con saludo - mejorado */}
-      <div className="mb-4 sm:mb-6">
-        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold italic text-gray-900 mb-1.5">
-          Howdy, {firstName}!
-        </h1>
-        <p className="text-sm sm:text-base text-gray-500">
-          Entiende tus gastos, controla tu dinero.
+      {/* Header con saludo */}
+      <div className="mb-1 sm:mb-2">
+        <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
+          {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
         </p>
+        <h1 className="mb-1 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">Howdy, {firstName}</h1>
+        <p className="text-sm text-slate-500">Entiende tus gastos, controla tu dinero.</p>
       </div>
 
-      {/* Tarjetas de Beneficio mejoradas */}
+      <LocalModeBanner />
+
+      {/* Tarjetas de Beneficio */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6">
-        {/* Beneficio Mes Actual - Mayor énfasis */}
-        <div 
+        {/* Beneficio Mes Actual */}
+        <div
           className={`bg-gray-50 rounded-2xl shadow-sm border border-gray-100 relative p-5 sm:p-6 hover:shadow-md transition-all ${
             prefersReducedMotion() ? '' : 'duration-300 hover:scale-[1.01]'
           }`}
@@ -377,7 +283,7 @@ export default function HomePageClient({
         </div>
 
         {/* Beneficio Mes Anterior */}
-        <div 
+        <div
           className={`bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 hover:shadow-md transition-all ${
             prefersReducedMotion() ? '' : 'duration-300 hover:scale-[1.01]'
           }`}
@@ -391,6 +297,7 @@ export default function HomePageClient({
           <p className="text-[10px] sm:text-xs text-gray-400 font-medium lowercase">
             {(() => {
               const prev = new Date()
+              prev.setDate(1)
               prev.setMonth(prev.getMonth() - 1)
               return formatDate(prev, 'short')
             })()}
@@ -398,439 +305,8 @@ export default function HomePageClient({
         </div>
       </div>
 
-      {/* Pie Chart y Top 5 en escritorio - misma línea */}
-      <div className="bg-white rounded-2xl shadow-sm border border-[#90EBD6]/20 p-6 sm:p-8">
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Gastos por Categoría</h2>
-          <p className="text-sm text-gray-500 mt-1">Mes actual declarado</p>
-        </div>
-        {expenseCategories.length === 0 ? (
-          <div className="text-center py-12">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            <p className="mt-4 text-sm text-gray-500">No hay gastos registrados este mes</p>
-          </div>
-        ) : (
-          <div className="flex flex-col lg:flex-row items-start gap-6 lg:gap-8">
-            {/* Pie Chart */}
-            <div className="relative flex-shrink-0 mx-auto lg:mx-0">
-              <ResponsiveContainer width={240} height={240}>
-                <PieChart>
-                  <Pie
-                    data={expenseCategories}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={false}
-                    outerRadius={120}
-                    innerRadius={60}
-                    fill="#8884d8"
-                    dataKey="total"
-                    onClick={(data, index, e) => {
-                      if (data && data.payload && e) {
-                        const entry = data.payload
-                        const total = entry.total || 0
-                        const percentage = entry.percentage || 0
-                        const nativeEvent = e.nativeEvent as MouseEvent | TouchEvent
-                        const clientX = 'touches' in nativeEvent ? nativeEvent.touches[0]?.clientX : nativeEvent.clientX
-                        const clientY = 'touches' in nativeEvent ? nativeEvent.touches[0]?.clientY : nativeEvent.clientY
-                        setActiveTooltip({
-                          x: clientX || 0,
-                          y: (clientY || 0) - 80,
-                          data: {
-                            ds_category: entry.ds_category || entry.name,
-                            total,
-                            percentage,
-                          },
-                        })
-                        setTimeout(() => setActiveTooltip(null), 3000)
-                      }
-                    }}
-                  >
-                    {expenseCategories.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={colorsArray[index % colorsArray.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    wrapperStyle={{ zIndex: 9999 }}
-                    contentStyle={{ backgroundColor: '#000000', border: '2px solid #374151', borderRadius: '0.5rem', padding: '12px', opacity: 1, zIndex: 9999 }}
-                    content={({ active, payload }) => {
-                      // Deshabilitar tooltip en dispositivos táctiles para evitar duplicación
-                      if (typeof window !== 'undefined' && 'ontouchstart' in window) {
-                        return null
-                      }
-                      if (active && payload && payload.length) {
-                        const data = payload[0].payload
-                        return (
-                          <div className="bg-black text-white rounded-lg shadow-xl border-2 border-gray-800 p-3" style={{ opacity: 1, backgroundColor: '#000000' }}>
-                            <p className="text-sm font-semibold mb-2">{data.ds_category}</p>
-                            <p className="text-base font-bold mb-1">
-                              {formatCurrency(data.total)}
-                            </p>
-                            <p className="text-xs text-gray-300">
-                              {data.percentage.toFixed(1)}%
-                            </p>
-                          </div>
-                        )
-                      }
-                      return null
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              {activeTooltip && (
-                <>
-                  {/* Overlay para cerrar al tocar fuera */}
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setActiveTooltip(null)}
-                    onTouchStart={() => setActiveTooltip(null)}
-                  />
-                  {/* Tooltip */}
-                  <div
-                    className="fixed z-50 bg-black text-white rounded-lg shadow-lg p-4"
-                    style={{
-                      left: `${activeTooltip.x}px`,
-                      top: `${activeTooltip.y}px`,
-                      transform: 'translateX(-50%)',
-                      minWidth: '140px',
-                    }}
-                  >
-                    <button
-                      onClick={() => setActiveTooltip(null)}
-                      className="absolute top-1 right-1 text-gray-300 hover:text-white active:text-white text-xl leading-none w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-800 active:bg-gray-700 transition-colors"
-                      aria-label="Cerrar"
-                    >
-                      ×
-                    </button>
-                    <p className="text-sm font-semibold mb-2 pr-4">{activeTooltip.data.ds_category}</p>
-                    <p className="text-base font-bold mb-1">
-                      {formatCurrency(activeTooltip.data.total)}
-                    </p>
-                    <p className="text-xs text-gray-300">
-                      {activeTooltip.data.percentage.toFixed(1)}%
-                    </p>
-                  </div>
-                </>
-              )}
-              {/* Total en el centro - mejorado */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="text-center">
-                  <p className="text-[10px] sm:text-xs text-gray-400 mb-0.5">Total Gastos</p>
-                  <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
-                    {formatCurrency(currentMonthExpenses)}
-                  </p>
-                </div>
-              </div>
-            </div>
-            {/* Leyenda de categorías - solo móvil */}
-            <div className="w-full lg:hidden">
-              <div className="space-y-2">
-                {expenseCategories.map((cat, index) => (
-                  <div key={cat.id_category} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: colorsArray[index % colorsArray.length] }}
-                      />
-                      <span className="text-sm font-medium text-gray-900 truncate">{cat.ds_category}</span>
-                    </div>
-                    <div className="text-right flex-shrink-0 ml-4">
-                      <span className="text-sm font-bold text-gray-900">
-                        {formatCurrency(cat.total)}
-                      </span>
-                      <span className="text-xs text-gray-500 ml-2">
-                        {cat.percentage.toFixed(1)}%
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Layout escritorio: Leyenda izquierda + Top 5 derecha */}
-            <div className="hidden lg:flex lg:flex-1 lg:gap-6">
-              {/* Leyenda de categorías - compacta y pegada a la izquierda */}
-              <div className="flex-shrink-0 w-64">
-                <div className="space-y-1">
-                  {expenseCategories.map((cat, index) => (
-                    <div key={cat.id_category} className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <div
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: colorsArray[index % colorsArray.length] }}
-                        />
-                        <span className="text-xs lg:text-sm font-medium text-gray-900 truncate">{cat.ds_category}</span>
-                      </div>
-                      <div className="text-right flex-shrink-0 ml-2">
-                        <span className="text-xs lg:text-sm font-bold text-gray-900">
-                          {formatCurrency(cat.total)}
-                        </span>
-                        <span className="text-[10px] lg:text-xs text-gray-500 ml-1">
-                          {cat.percentage.toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Top 5 Gastos - a la derecha en escritorio */}
-              <div className="flex-1 min-w-0 border-l border-[#90EBD6]/30 pl-6">
-                <div className="mb-4">
-                  <h2 className="text-lg font-bold text-gray-900">Top 5 Gastos</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Mayores gastos del mes</p>
-                </div>
-                {top5Expenses.length === 0 ? (
-                  <div className="text-center py-8">
-                    <svg className="mx-auto h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="mt-3 text-xs text-gray-500">No hay gastos</p>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {top5Expenses.map((expense, index) => (
-                      <div 
-                        key={expense.id_transaction} 
-                        className="flex items-center justify-between p-2.5 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-all duration-200"
-                      >
-                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                          <div 
-                            className={`flex-shrink-0 w-7 h-7 lg:w-8 lg:h-8 rounded-lg flex items-center justify-center font-bold text-xs lg:text-sm ${
-                              index === 4 ? 'text-gray-800' : 'text-white'
-                            }`}
-                            style={{ backgroundColor: top5Colors[index] || top5Colors[4] }}
-                          >
-                            {index + 1}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs lg:text-sm font-semibold text-gray-900 truncate">
-                              {expense.ds_comments || 'Sin comentario'}
-                            </p>
-                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className="text-[10px] lg:text-xs text-gray-500">
-                                {expense.category?.ds_category || 'Sin categoría'}
-                              </span>
-                              {expense.subcategory && (
-                                <>
-                                  <span className="text-[10px] lg:text-xs text-gray-400">•</span>
-                                  <span className="text-[10px] lg:text-xs text-gray-500">
-                                    {expense.subcategory.ds_subcategory}
-                                  </span>
-                                </>
-                              )}
-                              <span className="text-[10px] lg:text-xs text-gray-400">•</span>
-                              <span className="text-[10px] lg:text-xs text-gray-500">
-                                {formatDate(expense.dt_date, 'long')}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex-shrink-0 text-right ml-2">
-                          <p className="text-sm lg:text-base font-bold text-gray-900">
-                            {formatCurrency(expense.ft_amount || 0)}
-                          </p>
-                          <div className="mt-1 flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => setEditingTransaction(expense)}
-                              className="text-gray-600 hover:text-gray-900 transition-colors"
-                              title="Editar"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleDeleteTransaction(expense.id_transaction)}
-                              className="text-red-500 hover:text-red-700 transition-colors"
-                              title="Borrar"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Top 5 Gastos - Solo móvil */}
-      <div className="lg:hidden bg-white rounded-2xl shadow-sm border border-[#90EBD6]/20 p-6">
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Top 5 Gastos del Mes</h2>
-          <p className="text-sm text-gray-500 mt-1">Mayores gastos del mes actual</p>
-        </div>
-        {top5Expenses.length === 0 ? (
-          <div className="text-center py-12">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="mt-4 text-sm text-gray-500">No hay gastos registrados este mes</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {top5Expenses.map((expense, index) => (
-              <div 
-                key={expense.id_transaction} 
-                className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-all duration-200"
-              >
-                <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <div 
-                    className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white"
-                    style={{ backgroundColor: top5Colors[index] || top5Colors[4] }}
-                  >
-                    {index + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {expense.ds_comments || 'Sin comentario'}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-xs text-gray-500">
-                        {expense.category?.ds_category || 'Sin categoría'}
-                      </span>
-                      {expense.subcategory && (
-                        <>
-                          <span className="text-xs text-gray-400">•</span>
-                          <span className="text-xs text-gray-500">
-                            {expense.subcategory.ds_subcategory}
-                          </span>
-                        </>
-                      )}
-                      <span className="text-xs text-gray-400">•</span>
-                      <span className="text-xs text-gray-500">
-                        {formatDate(expense.dt_date, 'long')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex-shrink-0 text-right ml-4">
-                  <p className="text-lg font-bold text-gray-900">
-                    {formatCurrency(expense.ft_amount || 0)}
-                  </p>
-                  <div className="mt-1 flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => setEditingTransaction(expense)}
-                      className="text-gray-600 hover:text-gray-900 transition-colors"
-                      title="Editar"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTransaction(expense.id_transaction)}
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                      title="Borrar"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Gastos últimos 7 días */}
-      <div className="bg-white rounded-2xl shadow-sm border border-[#90EBD6]/20 p-6">
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Gastos últimos 7 días</h2>
-          <p className="text-sm text-gray-500 mt-1">Incluye hoy</p>
-        </div>
-        {last7DaysExpenses.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-sm text-gray-500">No hay gastos en los últimos 7 días</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {last7DaysExpenses.map((expense) => (
-              <div
-                key={expense.id_transaction}
-                className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-all duration-200"
-              >
-                <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {expense.ds_comments || 'Sin comentario'}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-xs text-gray-500">
-                        {expense.category?.ds_category || 'Sin categoría'}
-                      </span>
-                      {expense.subcategory && (
-                        <>
-                          <span className="text-xs text-gray-400">•</span>
-                          <span className="text-xs text-gray-500">
-                            {expense.subcategory.ds_subcategory}
-                          </span>
-                        </>
-                      )}
-                      <span className="text-xs text-gray-400">•</span>
-                      <span className="text-xs text-gray-500">
-                        {formatDate(expense.dt_date, 'long')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex-shrink-0 text-right ml-4">
-                  <p className="text-lg font-bold text-gray-900">
-                    {formatCurrency(expense.ft_amount || 0)}
-                  </p>
-                  <div className="mt-1 flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => setEditingTransaction(expense)}
-                      className="text-gray-600 hover:text-gray-900 transition-colors"
-                      title="Editar"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTransaction(expense.id_transaction)}
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                      title="Borrar"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {editingTransaction && (
-        <EditTransactionModal
-          transaction={editingTransaction}
-          idFamily={idFamily}
-          idUser={idUser}
-          familyMembers={familyMembers}
-          categories={categories}
-          tags={tags}
-          onClose={() => setEditingTransaction(null)}
-          onSave={() => {
-            setEditingTransaction(null)
-            setTimeout(() => window.location.reload(), 100)
-          }}
-        />
-      )}
+      {/* Seguimiento de presupuestos y controles */}
+      <HomeBudgetOverview idFamily={idFamily} idUser={idUser} />
     </div>
   )
 }

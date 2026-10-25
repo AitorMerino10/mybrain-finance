@@ -10,7 +10,7 @@ import { isMyBrainFamilyAllowed } from '@/lib/mybrain/access'
 export default async function AnalyticsPage({
   searchParams,
 }: {
-  searchParams: { family?: string }
+  searchParams: { family?: string; tab?: string }
 }) {
   const supabase = createClient()
   const {
@@ -46,7 +46,7 @@ export default async function AnalyticsPage({
   ])
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <Navigation
         idFamily={selectedFamilyId}
         idUser={user.id}
@@ -65,6 +65,7 @@ export default async function AnalyticsPage({
             familyMembers={familyMembers}
             categories={categories}
             tags={tags}
+            initialSection={searchParams.tab === 'budgets' ? 'budgets' : undefined}
           />
         </div>
       </main>
