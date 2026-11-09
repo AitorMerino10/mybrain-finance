@@ -95,7 +95,10 @@ export default function NotificationsSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscription: subscription.toJSON() }),
       })
-      if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar el dispositivo')
+      if (!response.ok) {
+        const json = await response.json().catch(() => ({}))
+        throw new Error(json.error || `No se pudo guardar el dispositivo (error ${response.status})`)
+      }
       setStatus('on')
       setMessage({ type: 'ok', text: 'Notificaciones activadas en este dispositivo.' })
     } catch (error) {
@@ -132,8 +135,8 @@ export default function NotificationsSettings() {
     setMessage(null)
     try {
       const response = await fetch('/api/push/test', { method: 'POST' })
-      const json = await response.json()
-      if (!response.ok) throw new Error(json.error || 'No se pudo enviar la prueba')
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error || `No se pudo enviar la prueba (error ${response.status})`)
       setMessage({ type: 'ok', text: 'Prueba enviada: debería llegarte en unos segundos.' })
     } catch (error) {
       setMessage({ type: 'error', text: error instanceof Error ? error.message : 'No se pudo enviar la prueba' })
