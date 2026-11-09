@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-type Prefs = { budgetAlerts: boolean; warnPercent: number; closeAlerts: boolean; unassignedAlerts: boolean }
+type Prefs = { dailyReminder: boolean; budgetAlerts: boolean; goalAlerts: boolean; warnPercent: number; closeAlerts: boolean }
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
@@ -209,40 +209,43 @@ export default function NotificationsSettings() {
       {prefs && (
         <div className="mt-4 divide-y divide-gray-100 rounded-xl border border-gray-100 px-4">
           <Toggle
-            label="Partidas cerca del límite"
+            label="Recordatorio diario de gastos"
+            checked={prefs.dailyReminder}
+            onChange={(value) => updatePrefs({ dailyReminder: value })}
+            hint="Todos los días a las 23:00, para que metas los gastos de hoy."
+          />
+          <Toggle
+            label="Presupuesto mensual al límite"
             checked={prefs.budgetAlerts}
             onChange={(value) => updatePrefs({ budgetAlerts: value })}
-            hint={
-              <span className="inline-flex flex-wrap items-center gap-1">
-                Te aviso al llegar al
-                <select
-                  value={prefs.warnPercent}
-                  onChange={(event) => updatePrefs({ warnPercent: Number(event.target.value) })}
-                  onClick={(event) => event.stopPropagation()}
-                  className="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs"
-                >
-                  {[50, 60, 70, 80, 90].map((value) => (
-                    <option key={value} value={value}>
-                      {value} %
-                    </option>
-                  ))}
-                </select>
-                de una partida y al pasarte del 100 %.
-              </span>
-            }
+            hint="Al guardar un gasto, si llevas más del porcentaje elegido de tu presupuesto del mes (y de nuevo al pasarte del 100 %)."
           />
           <Toggle
-            label="Cierre del presupuesto"
+            label="Controles de gasto al límite"
+            checked={prefs.goalAlerts}
+            onChange={(value) => updatePrefs({ goalAlerts: value })}
+            hint="Lo mismo, pero para cada control de gasto que tengas creado."
+          />
+          <Toggle
+            label="Cierre de mes"
             checked={prefs.closeAlerts}
             onChange={(value) => updatePrefs({ closeAlerts: value })}
-            hint="Cuando tu presupuesto está a punto de acabar o toca cerrarlo."
+            hint="El día 1 de cada mes, para cerrar el anterior y ver qué tal ha ido."
           />
-          <Toggle
-            label="Gastos sin partida"
-            checked={prefs.unassignedAlerts}
-            onChange={(value) => updatePrefs({ unassignedAlerts: value })}
-            hint="Un aviso a la semana si tienes gastos que no cuentan en ninguna partida."
-          />
+          <div className="flex items-center justify-between gap-4 py-2.5">
+            <span className="text-sm font-medium text-gray-900">Avisarme al llegar al</span>
+            <select
+              value={prefs.warnPercent}
+              onChange={(event) => updatePrefs({ warnPercent: Number(event.target.value) })}
+              className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm"
+            >
+              {[50, 60, 70, 80, 90].map((value) => (
+                <option key={value} value={value}>
+                  {value} %
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
     </div>

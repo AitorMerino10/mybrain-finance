@@ -475,6 +475,8 @@ export type Database = {
           dt_updated: string
           id_user: string
           is_budget_alerts: boolean
+          is_daily_reminder: boolean | null
+          is_goal_alerts: boolean | null
           is_close_alerts: boolean
           is_unassigned_alerts: boolean
           nu_warn_percent: number
@@ -483,6 +485,8 @@ export type Database = {
           dt_updated?: string
           id_user: string
           is_budget_alerts?: boolean
+          is_daily_reminder?: boolean | null
+          is_goal_alerts?: boolean | null
           is_close_alerts?: boolean
           is_unassigned_alerts?: boolean
           nu_warn_percent?: number
@@ -491,6 +495,8 @@ export type Database = {
           dt_updated?: string
           id_user?: string
           is_budget_alerts?: boolean
+          is_daily_reminder?: boolean | null
+          is_goal_alerts?: boolean | null
           is_close_alerts?: boolean
           is_unassigned_alerts?: boolean
           nu_warn_percent?: number

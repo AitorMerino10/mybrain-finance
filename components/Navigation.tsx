@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { isAppAdmin } from '@/lib/admin'
+import { AppLogoSvg } from '@/lib/app-logo'
 
 // Helper para detectar prefers-reduced-motion
 const prefersReducedMotion = () => {
@@ -63,6 +64,8 @@ export default function Navigation({
   const isActive = (href: string) =>
     pathname === href || (href === '/budgets' && pathname.startsWith('/budgets/'))
   const isMyBrainActive = pathname.startsWith('/mybrain')
+  // En móvil Presupuestos, Ayuda y Admin cuelgan del menú de Configuración
+  const isConfigActive = ['/settings', '/budgets', '/help', '/admin'].some((path) => pathname === path || pathname.startsWith(`${path}/`))
 
   // Cerrar menús al hacer click fuera
   useEffect(() => {
@@ -256,17 +259,6 @@ export default function Navigation({
         <div className="bg-[#EAF1F6] backdrop-blur-sm border-t border-gray-200/50 shadow-lg">
           <div className="flex h-14 items-center justify-around px-1">
             <Link
-              href={`/budgets${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
-              className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
-                isActive('/budgets') ? 'text-slate-700' : 'text-slate-500'
-              }`}
-            >
-              <svg className="h-5 w-5 mb-0.5" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
-              </svg>
-              <span className={`text-[10px] font-bold ${isActive('/budgets') ? 'text-slate-700' : 'text-slate-600'}`}>Presup.</span>
-            </Link>
-            <Link
               href={`/analytics${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
               className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
                 isActive('/analytics') ? 'text-slate-700' : 'text-slate-500'
@@ -291,13 +283,13 @@ export default function Navigation({
             <Link
               href={`/settings${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
               className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
-                isActive('/settings') ? 'text-slate-700' : 'text-slate-500'
+                isConfigActive ? 'text-slate-700' : 'text-slate-500'
               }`}
             >
               <svg className="h-5 w-5 mb-0.5" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h7.125M10.5 12h7.125M10.5 18h7.125M6 6h.008v.008H6V6zm0 6h.008v.008H6V12zm0 6h.008v.008H6V18z" />
               </svg>
-              <span className={`text-[10px] font-bold ${isActive('/settings') ? 'text-slate-700' : 'text-slate-600'}`}>Config</span>
+              <span className={`text-[10px] font-bold ${isConfigActive ? 'text-slate-700' : 'text-slate-600'}`}>Config</span>
             </Link>
           </div>
         </div>
@@ -310,77 +302,18 @@ export default function Navigation({
         } ${prefersReducedMotion() ? '' : 'transition-all duration-300'}`}
       >
         <div className="flex items-center justify-between px-4">
-          {/* Family Selector - Mobile */}
-          <div className="relative flex-1" ref={familyMenuRef}>
-            <button
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setIsFamilyMenuOpen(!isFamilyMenuOpen)
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-              }}
-              className="flex items-center gap-2 text-white/90 hover:text-white transition-colors"
-            >
-              <svg className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-              </svg>
-              <span className="text-sm font-medium truncate max-w-[140px]">
-                {families.find(f => f.id_family === currentFamilyId)?.ds_family || 'Familia'}
-              </span>
-              <svg
-                className="h-3 w-3 text-white/70 flex-shrink-0"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-                {isFamilyMenuOpen && (
-              <div className="absolute left-0 mt-2 w-56 rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50">
-                <div className="py-1">
-                  {families.map((family) => (
-                    <button
-                      key={family.id_family}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        handleFamilyChange(family.id_family)
-                        setIsFamilyMenuOpen(false)
-                      }}
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        handleFamilyChange(family.id_family)
-                        setIsFamilyMenuOpen(false)
-                      }}
-                      className={`block w-full text-left px-4 py-2 text-sm ${
-                        family.id_family === currentFamilyId
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      {family.ds_family || 'Sin nombre'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Logo: vuelve al inicio */}
+          <Link
+            href={`/${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
+            className="flex flex-1 items-center gap-2.5 text-white"
+            aria-label="MyBrain finance: ir al inicio"
+          >
+            <span className="block h-9 w-9 shrink-0 overflow-hidden rounded-[10px]">
+              <AppLogoSvg size={36} />
+            </span>
+            <span className="text-lg font-bold leading-none">MyBrain</span>
+          </Link>
 
-          {/* Admin Button - Mobile (solo para admin) */}
-          {isAdmin && (
-            <Link
-              href={`/admin${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
-              className="flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 transition-colors ml-2"
-            >
-              <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1s.4-1 1-1h12c.6 0 1 .4 1 1z"/>
-              </svg>
-            </Link>
-          )}
           {showMyBrainLink && (
             <Link
               href="/mybrain"
@@ -392,13 +325,6 @@ export default function Navigation({
               <span className="text-lg leading-none">🧠</span>
             </Link>
           )}
-          <Link
-            href={`/help${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
-            className="flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 transition-colors ml-2"
-            aria-label="Ayuda"
-          >
-            <span className="text-white font-bold">?</span>
-          </Link>
           {/* Profile Button - Mobile */}
           <div className="relative ml-3" ref={profileMenuRef}>
             <button
@@ -412,6 +338,25 @@ export default function Navigation({
             {isProfileMenuOpen && (
               <div className="absolute right-0 mt-2 w-56 rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50">
                 <div className="py-1">
+                  {families.length > 1 && (
+                    <div className="border-b border-gray-100 pb-1 mb-1">
+                      <p className="px-4 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Familia</p>
+                      {families.map((family) => (
+                        <button
+                          key={family.id_family}
+                          onClick={() => {
+                            handleFamilyChange(family.id_family)
+                            setIsProfileMenuOpen(false)
+                          }}
+                          className={`block w-full px-4 py-2 text-left text-sm ${
+                            family.id_family === currentFamilyId ? 'bg-slate-50 font-semibold text-slate-900' : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          👪 {family.ds_family || 'Sin nombre'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <Link
                     href={`/profile${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"

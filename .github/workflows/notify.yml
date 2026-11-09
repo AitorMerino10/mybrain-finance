@@ -1,0 +1,29 @@
+# Lanza cada hora la tarea de notificaciones programadas (recordatorio diario a las 23:00 y
+# cierre de mes el día 1). La propia API decide, según la hora de Madrid, si toca enviar algo.
+# Secrets del repositorio necesarios: APP_URL (https://tu-dominio) y CRON_SECRET.
+name: Notificaciones programadas
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Forzar un aviso ahora (prueba): daily o close. Vacío = comportamiento normal'
+        required: false
+        default: ''
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar a la API
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          set -euo pipefail
+          url="${APP_URL%/}/api/cron/notify"
+          if [ -n "${FORCE:-}" ]; then url="${url}?force=${FORCE}"; fi
+          curl --fail-with-body --silent --show-error --max-time 120 -H "Authorization: Bearer ${CRON_SECRET}" "$url"

@@ -3,15 +3,17 @@ import { redirect } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import CategoryManager from '@/components/CategoryManager'
 import NotificationsSettings from '@/components/NotificationsSettings'
+import SettingsMenu, { type SettingsSection } from '@/components/SettingsMenu'
 import HelpTooltip from '@/components/HelpTooltip'
 import { getUserFamilies } from '@/lib/family'
 import Link from 'next/link'
 import { isMyBrainFamilyAllowed } from '@/lib/mybrain/access'
+import { isAppAdmin } from '@/lib/admin'
 
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: { family?: string }
+  searchParams: { family?: string; section?: string }
 }) {
   const supabase = createClient()
   const {
@@ -38,6 +40,9 @@ export default async function SettingsPage({
   if (!selectedFamilyId || !families.find(f => f.id_family === selectedFamilyId)) {
     redirect('/unauthorized')
   }
+
+  const section: SettingsSection = searchParams.section === 'notificaciones' ? 'notificaciones' : 'verticales'
+  const showAdmin = isAppAdmin(user.id, userData?.ds_email || null)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -70,12 +75,10 @@ export default async function SettingsPage({
               </div>
             </div>
 
-            <div className="mb-4 sm:mb-6 rounded-2xl bg-white p-4 sm:p-6 shadow-sm border border-gray-100">
-              <NotificationsSettings />
-            </div>
+            <SettingsMenu idFamily={selectedFamilyId} active={section} showAdmin={showAdmin} />
 
             <div className="rounded-2xl bg-white p-4 sm:p-6 shadow-sm border border-gray-100">
-              <CategoryManager idFamily={selectedFamilyId} />
+              {section === 'notificaciones' ? <NotificationsSettings /> : <CategoryManager idFamily={selectedFamilyId} />}
             </div>
           </div>
         </div>
