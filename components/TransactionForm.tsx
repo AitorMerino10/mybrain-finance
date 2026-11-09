@@ -42,6 +42,15 @@ import TagPicker from './TagPicker'
 import HelpTooltip from './HelpTooltip'
 import PlacePicker from './PlacePicker'
 import { placeToTransactionFields, type PlaceValue } from '@/lib/places'
+import {
+  EVERY_MONTHS_OPTIONS,
+  addDaysTo,
+  createRecurringExpense,
+  deleteRecurringExpense,
+  describeSchedule,
+  nextOccurrenceAfter,
+  startDateFor,
+} from '@/lib/recurring'
 
 interface TransactionFormProps {
   transactionType: TransactionTypeName
@@ -112,6 +121,10 @@ export default function TransactionForm({
   const [showTagModal, setShowTagModal] = useState(false)
   const [amountInputValue, setAmountInputValue] = useState<string>('')
   const [place, setPlace] = useState<PlaceValue | null>(null)
+  // Repetir el gasto (crea un gasto recurrente que llega como pendiente el día que toca)
+  const [repeatEnabled, setRepeatEnabled] = useState(false)
+  const [repeatEvery, setRepeatEvery] = useState(1)
+  const [repeatDay, setRepeatDay] = useState<number | null>(null)
 
   // Rellenar importe, fecha y nombre cuando vienen de un gasto pendiente
   useEffect(() => {
@@ -294,8 +307,38 @@ export default function TransactionForm({
         return Math.round((num + Number.EPSILON) * 100) / 100
       }
       const amountToSend = roundToTwoDecimals(formData.ft_amount)
-      
-      const created = await createTransaction(
+
+      // Si se pide repetir el gasto, se crea antes la regla para poder enlazar este primer gasto con ella
+      let newRecurringId: string | null = null
+      if (repeatAvailable && repeatEnabled) {
+        const day = repeatDay ?? Number(formData.dt_date.slice(8, 10))
+        const rule = { dt_start: startDateFor(formData.dt_date.slice(0, 7), day), nu_day_of_month: day, nu_every_months: repeatEvery }
+        const today = getTodayISOString()
+        // Este gasto ya es el cobro de su fecha: el siguiente es el primero posterior a esa fecha (y nunca en el pasado)
+        const dtNext = nextOccurrenceAfter(rule, formData.dt_date >= today ? formData.dt_date : addDaysTo(today, -1))
+        const categoryName = categories.find((c) => c.id_category === formData.id_category)?.ds_category
+        const subcategoryName = subcategories.find((sc) => sc.id_subcategory === formData.id_subcategory)?.ds_subcategory
+        newRecurringId = crypto.randomUUID()
+        await createRecurringExpense(supabase, {
+          id_recurring_expense: newRecurringId,
+          id_family: idFamily,
+          id_user_creator: idUser,
+          ds_name: (formData.ds_comments?.trim() || subcategoryName || categoryName || 'Gasto recurrente').slice(0, 80),
+          ft_amount: amountToSend,
+          ...rule,
+          dt_next: dtNext,
+          id_category: formData.id_category,
+          id_subcategory: formData.id_subcategory,
+          id_budget_type: formData.id_budget_type,
+          id_budget_subtype: formData.id_budget_subtype ?? null,
+          ds_user_ids: usersToAssociate.length > 0 ? usersToAssociate : [idUser],
+          is_active: true,
+        })
+      }
+
+      let created
+      try {
+      created = await createTransaction(
         supabase,
         {
           id_type: formData.id_type,
@@ -309,7 +352,7 @@ export default function TransactionForm({
           id_budget_type: transactionType === 'Expense' ? formData.id_budget_type : null,
           // Lugar (solo se envía si hay: así funciona también antes de ejecutar la migración)
           ...(place ? placeToTransactionFields(place) : {}),
-          ...(initialValues?.recurringId ? { id_recurring_expense: initialValues.recurringId } : {}),
+          ...(initialValues?.recurringId || newRecurringId ? { id_recurring_expense: initialValues?.recurringId || newRecurringId } : {}),
           // Solo se envía si hay subpartida: así funciona también antes de ejecutar la migración
           ...(transactionType === 'Expense' && formData.id_budget_subtype
             ? { id_budget_subtype: formData.id_budget_subtype }
@@ -319,6 +362,11 @@ export default function TransactionForm({
         formData.id_tag || undefined,
         usersToAssociate.length > 0 ? usersToAssociate : undefined
       )
+      } catch (transactionError) {
+        // Sin gasto no tiene sentido dejar la regla huérfana
+        if (newRecurringId) await deleteRecurringExpense(supabase, newRecurringId).catch(() => undefined)
+        throw transactionError
+      }
       trackTestTransaction(created.id_transaction)
       onCreated?.()
       if (transactionType === 'Expense') checkBudgetAlerts(idFamily)
@@ -358,6 +406,9 @@ export default function TransactionForm({
       })
       setAmountInputValue('')
       setPlace(null)
+      setRepeatEnabled(false)
+      setRepeatEvery(1)
+      setRepeatDay(null)
       setIncomeAllocation(null)
       setSubcategories([])
       setErrors({})
@@ -395,6 +446,9 @@ export default function TransactionForm({
     setTags((prev) => [...prev, newTag])
     setFormData((prev) => ({ ...prev, id_tag: newTag.id_tag }))
   }
+
+  // Solo en gastos nuevos que no vienen ya de un recurrente
+  const repeatAvailable = transactionType === 'Expense' && !initialValues?.recurringId
 
   const selectedCategory = categories.find(
     (c) => c.id_category === formData.id_category
@@ -875,6 +929,68 @@ export default function TransactionForm({
           )}
         </div>
 
+
+        {/* Repetir el gasto */}
+        {repeatAvailable && (
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <label className="flex cursor-pointer items-start justify-between gap-4">
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-gray-700">🔁 Repetir este gasto</span>
+                <span className="mt-0.5 block text-xs text-gray-500">
+                  Suscripciones, alquiler, seguros… Cuando toque, te llegará como gasto pendiente para que lo completes.
+                </span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={repeatEnabled}
+                onClick={() => setRepeatEnabled((value) => !value)}
+                disabled={loading}
+                className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${repeatEnabled ? 'bg-teal-500' : 'bg-gray-300'}`}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${repeatEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </label>
+            {repeatEnabled && (
+              <div className="mt-3 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-gray-600">Se repite</span>
+                    <select
+                      value={repeatEvery}
+                      onChange={(e) => setRepeatEvery(Number(e.target.value))}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+                    >
+                      {EVERY_MONTHS_OPTIONS.map((months) => (
+                        <option key={months} value={months}>
+                          {months === 1 ? 'Cada mes' : months === 12 ? 'Cada año' : `Cada ${months} meses`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-gray-600">Día del mes</span>
+                    <select
+                      value={repeatDay ?? Number(formData.dt_date.slice(8, 10))}
+                      onChange={(e) => setRepeatDay(Number(e.target.value))}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+                    >
+                      {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                        <option key={day} value={day}>
+                          {day}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Se cobrará {describeSchedule({ nu_day_of_month: repeatDay ?? Number(formData.dt_date.slice(8, 10)), nu_every_months: repeatEvery })}. Podrás cambiarlo o pausarlo en
+                  Configuración → Recurrentes.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Lugar */}
         <PlacePicker value={place} onChange={setPlace} disabled={loading} />

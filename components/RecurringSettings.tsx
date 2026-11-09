@@ -111,7 +111,7 @@ export default function RecurringSettings({ idFamily, idUser }: { idFamily: stri
         // Las sugerencias se buscan después, para no retrasar la pantalla
         try {
           const transactions = await fetchCalculatorTransactions(idFamily)
-          if (!cancelled) setCandidates(detectRecurringCandidates(transactions, loadedRules.map((rule) => rule.ds_name), getTodayISOString()))
+          if (!cancelled) setCandidates(detectRecurringCandidates(transactions, loadedRules, getTodayISOString()))
         } catch {
           /* sin sugerencias */
         }
@@ -512,8 +512,12 @@ export default function RecurringSettings({ idFamily, idUser }: { idFamily: stri
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium capitalize text-gray-900">{candidate.name}</p>
                       <p className="text-xs text-gray-500">
-                        {formatMoney(candidate.amount, 2)} · {describeSchedule({ nu_day_of_month: candidate.dayOfMonth, nu_every_months: candidate.everyMonths })} ·{' '}
+                        {candidate.variable ? 'Media de ' : ''}{formatMoney(candidate.amount, 2)} · {describeSchedule({ nu_day_of_month: candidate.dayOfMonth, nu_every_months: candidate.everyMonths })} ·{' '}
                         {candidate.occurrences} veces
+                      </p>
+                      <p className="text-[11px] text-gray-400">
+                        {candidate.reason}
+                        {candidate.variable ? ' · el importe cambia cada vez' : ''}
                       </p>
                     </div>
                     <div className="flex gap-2">

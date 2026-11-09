@@ -6,6 +6,7 @@ import { fetchCalculatorTransactions, formatMoney, type CalcTransaction } from '
 import { getTodayISOString } from '@/lib/date-utils'
 import { googleMapsUrl } from '@/lib/places'
 import { isGoogleMapsConfigured, loadGoogleMaps } from '@/lib/google-maps'
+import { categoryStyle } from '@/lib/category-style'
 
 type Period = 'month' | '3months' | 'year' | 'all'
 
@@ -26,6 +27,9 @@ type PlaceGroup = {
   total: number
   lastDate: string
   transactions: CalcTransaction[]
+  /** Vertical que más pesa en este sitio (da el color y el emoji del pin) */
+  idCategory: string | null
+  categoryName: string
 }
 
 type Located = CalcTransaction & { ft_latitude: number; ft_longitude: number }
@@ -40,7 +44,7 @@ function periodStart(period: Period, today: string): string | null {
 }
 
 function groupByPlace(transactions: Located[]): PlaceGroup[] {
-  const groups = new Map<string, PlaceGroup & { names: Map<string, number>; latSum: number; lngSum: number }>()
+  const groups = new Map<string, PlaceGroup & { names: Map<string, number>; latSum: number; lngSum: number; byCategory: Map<string, { name: string; total: number }> }>()
   for (const tx of transactions) {
     // Mismo lugar: mismo identificador de Google o, si no, el mismo punto redondeado (~100 m)
     const key = tx.ds_place_id ? `id:${tx.ds_place_id}` : `pt:${tx.ft_latitude.toFixed(3)},${tx.ft_longitude.toFixed(3)}`
@@ -56,6 +60,9 @@ function groupByPlace(transactions: Located[]): PlaceGroup[] {
         total: 0,
         lastDate: '',
         transactions: [],
+        idCategory: null,
+        categoryName: '',
+        byCategory: new Map(),
         names: new Map(),
         latSum: 0,
         lngSum: 0,
@@ -68,6 +75,10 @@ function groupByPlace(transactions: Located[]): PlaceGroup[] {
     group.lngSum += tx.ft_longitude
     if (tx.dt_date > group.lastDate) group.lastDate = tx.dt_date
     group.transactions.push(tx)
+    const catKey = tx.id_category || 'none'
+    const catEntry = group.byCategory.get(catKey) || { name: tx.ds_category, total: 0 }
+    catEntry.total += tx.ft_amount
+    group.byCategory.set(catKey, catEntry)
     const label = tx.ds_place_name || tx.ds_comments?.trim() || ''
     if (label) group.names.set(label, (group.names.get(label) || 0) + 1)
   }
@@ -75,10 +86,13 @@ function groupByPlace(transactions: Located[]): PlaceGroup[] {
   return Array.from(groups.values())
     .map((group) => {
       const bestName = Array.from(group.names.entries()).sort((a, b) => b[1] - a[1])[0]?.[0]
-      const { names, latSum, lngSum, ...rest } = group
+      const { names, latSum, lngSum, byCategory, ...rest } = group
       void names
+      const [mainKey, main] = Array.from(byCategory.entries()).sort((a, b) => b[1].total - a[1].total)[0]
       return {
         ...rest,
+        idCategory: mainKey === 'none' ? null : mainKey,
+        categoryName: main.name,
         name: bestName || 'Sitio sin nombre',
         latitude: latSum / group.count,
         longitude: lngSum / group.count,
@@ -138,6 +152,20 @@ export default function PlacesPageClient({ idFamily }: { idFamily: string }) {
   )
   const groups = useMemo(() => groupByPlace(located), [located])
   const withoutPlace = filtered.length - located.length
+  // Leyenda: las verticales que aparecen en el mapa, con el gasto de cada una
+  const legend = useMemo(() => {
+    const from = periodStart(period, today)
+    const map = new Map<string, { id: string; name: string; total: number }>()
+    expenses.forEach((tx) => {
+      if (!tx.id_category || tx.ft_latitude == null || tx.ft_longitude == null || (from && tx.dt_date < from)) return
+      const entry = map.get(tx.id_category) || { id: tx.id_category, name: tx.ds_category, total: 0 }
+      entry.total += tx.ft_amount
+      map.set(tx.id_category, entry)
+    })
+    return Array.from(map.values())
+      .sort((a, b) => b.total - a.total)
+      .map((item) => ({ ...item, ...categoryStyle(item.id, item.name) }))
+  }, [expenses, period, today])
   const totalLocated = located.reduce((sum, tx) => sum + tx.ft_amount, 0)
   const selected = groups.find((group) => group.key === selectedKey) || null
 
@@ -188,12 +216,24 @@ export default function PlacesPageClient({ idFamily }: { idFamily: string }) {
       const maxTotal = Math.max(1, ...groups.map((group) => group.total))
       const bounds = new google.maps.LatLngBounds()
       groups.forEach((group) => {
-        const size = 26 + Math.round((group.total / maxTotal) * 22)
+        const size = 30 + Math.round((group.total / maxTotal) * 16)
+        const style = categoryStyle(group.idCategory, group.categoryName)
         const content = document.createElement('div')
         content.dataset.key = group.key
-        content.style.cssText = `width:${size}px;height:${size}px;border-radius:9999px;background:#12222E;color:#fff;display:flex;align-items:center;justify-content:center;font:600 12px system-ui,sans-serif;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;transition:transform .15s,background .15s`
-        content.textContent = String(group.count)
         content.title = `${group.name} · ${formatMoney(group.total)}`
+        content.style.cssText = `position:relative;width:${size}px;height:${Math.round(size * 1.22)}px;cursor:pointer;transform-origin:50% 100%;transition:transform .15s`
+        const pin = document.createElement('div')
+        pin.style.cssText = `position:absolute;top:0;left:0;width:${size}px;height:${size}px;background:${style.color};border:2.5px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 8px rgba(0,0,0,.35)`
+        const emoji = document.createElement('div')
+        emoji.textContent = style.emoji
+        emoji.style.cssText = `position:absolute;top:0;left:0;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-size:${Math.round(size * 0.52)}px;line-height:1`
+        content.append(pin, emoji)
+        if (group.count > 1) {
+          const badge = document.createElement('div')
+          badge.textContent = String(group.count)
+          badge.style.cssText = `position:absolute;top:-5px;right:-7px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:9999px;background:#12222E;color:#fff;border:1.5px solid #fff;display:flex;align-items:center;justify-content:center;font:700 10px system-ui,sans-serif`
+          content.append(badge)
+        }
         const marker = new AdvancedMarkerElement({ map, position: { lat: group.latitude, lng: group.longitude }, content, title: group.name })
         marker.addListener('click', () => setSelectedKey(group.key))
         markersRef.current.set(group.key, marker)
@@ -221,8 +261,7 @@ export default function PlacesPageClient({ idFamily }: { idFamily: string }) {
       const element = marker.content as HTMLElement | null
       if (!element) return
       const active = key === selectedKey
-      element.style.background = active ? '#2FB394' : '#12222E'
-      element.style.transform = active ? 'scale(1.25)' : 'scale(1)'
+      element.style.transform = active ? 'scale(1.3)' : 'scale(1)'
       marker.zIndex = active ? 10 : 1
     })
     if (selected && mapRef.current) {
@@ -282,6 +321,30 @@ export default function PlacesPageClient({ idFamily }: { idFamily: string }) {
         )}
       </div>
 
+      {legend.length > 1 && (
+        <div className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <div className="flex w-max gap-1.5 sm:w-auto sm:flex-wrap">
+            {legend.map((item) => {
+              const active = categoryId === item.id
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setCategoryId(active ? '' : item.id)}
+                  className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium transition-colors touch-manipulation ${
+                    active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full text-[10px]" style={{ background: item.color }}>
+                    {item.emoji}
+                  </span>
+                  {item.name}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {error && <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
       <div className="grid gap-4 lg:grid-cols-5 lg:gap-6">
@@ -302,7 +365,7 @@ export default function PlacesPageClient({ idFamily }: { idFamily: string }) {
               ? 'Cargando gastos…'
               : `${located.length} ${located.length === 1 ? 'gasto' : 'gastos'} con ubicación (${formatMoney(totalLocated)})${
                   withoutPlace > 0 ? ` · ${withoutPlace} sin ubicación` : ''
-                }. El número de cada punto son las veces que has ido; el tamaño, lo que has gastado.`}
+                }. Cada color y emoji es una vertical; el número, las veces que has ido; el tamaño, lo que has gastado.`}
           </p>
         </div>
 
@@ -320,7 +383,14 @@ export default function PlacesPageClient({ idFamily }: { idFamily: string }) {
                   <li key={group.key} className={`rounded-xl border bg-white transition-colors ${active ? 'border-[#2FB394] ring-1 ring-[#2FB394]' : 'border-slate-200'}`}>
                     <button onClick={() => setSelectedKey(active ? null : group.key)} className="w-full px-4 py-3 text-left touch-manipulation">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
+                        <span
+                          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-base"
+                          style={{ background: categoryStyle(group.idCategory, group.categoryName).color }}
+                          title={group.categoryName}
+                        >
+                          {categoryStyle(group.idCategory, group.categoryName).emoji}
+                        </span>
+                        <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-slate-900">{group.name}</p>
                           <p className="text-xs text-slate-500">
                             {group.count} {group.count === 1 ? 'vez' : 'veces'} · media {formatMoney(group.total / group.count, 2)} · última {shortDate(group.lastDate)}
