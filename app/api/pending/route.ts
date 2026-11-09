@@ -49,8 +49,16 @@ export async function POST(req: NextRequest) {
   const merchant = cleanText(body.merchant)
   const card = cleanText(body.card, 60)
   const date = parseDate(body.date)
-  const latitude = parseCoordinate(body.latitude, 90)
-  const longitude = parseCoordinate(body.longitude, 180)
+  let latitude = parseCoordinate(body.latitude ?? body.lat, 90)
+  let longitude = parseCoordinate(body.longitude ?? body.lng ?? body.lon, 180)
+  if (latitude === null || longitude === null) {
+    // Plan B: un solo campo "location" con "lat,lng" o un enlace de Mapas con las dos coordenadas
+    const combined = typeof body.location === 'string' ? body.location.match(/(-?\d{1,3}[.,]\d+)\s*[,;\s]\s*(-?\d{1,3}[.,]\d+)/) : null
+    if (combined) {
+      latitude = parseCoordinate(combined[1], 90)
+      longitude = parseCoordinate(combined[2], 180)
+    }
+  }
   const hasLocation = latitude !== null && longitude !== null
 
   // Algunos móviles lanzan la automatización dos veces: si llega lo mismo en 3 minutos, se ignora
@@ -65,6 +73,13 @@ export async function POST(req: NextRequest) {
   duplicateQuery = merchant ? duplicateQuery.eq('ds_merchant', merchant) : duplicateQuery.is('ds_merchant', null)
   const { data: duplicate } = await duplicateQuery.limit(1)
   if (duplicate && duplicate.length > 0) return NextResponse.json({ ok: true, duplicate: true })
+
+  // Para depurar el atajo: se devuelve lo que ha llegado en los campos de ubicación
+  const received = {
+    latitude: String(body.latitude ?? '').slice(0, 40),
+    longitude: String(body.longitude ?? '').slice(0, 40),
+    keys: Object.keys(body),
+  }
 
   const { data: created, error } = await admin
     .from('pml_pending_transaction')
@@ -97,5 +112,5 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  return NextResponse.json({ ok: true, id: created.id_pending_transaction, notified: notified > 0 })
+  return NextResponse.json({ ok: true, id: created.id_pending_transaction, notified: notified > 0, location: hasLocation, received })
 }
