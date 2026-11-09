@@ -9,7 +9,7 @@ import TransactionForm from './TransactionForm'
 import type { TransactionTypeName } from '@/types/transactions'
 import { formatCurrency, formatDate } from '@/lib/format'
 import LocalModeBanner from './LocalModeBanner'
-import { googleMapsUrl } from '@/lib/places'
+import { googleMapsUrl, type PlaceValue } from '@/lib/places'
 import { deletePendingTransaction, getPendingTransactions, type PendingTransaction } from '@/lib/pending'
 
 interface HomePageClientProps {
@@ -72,10 +72,14 @@ export default function HomePageClient({
     }
   }
 
-  const pendingMapsUrl = (item: PendingTransaction) =>
+  const pendingPlace = (item: PendingTransaction): PlaceValue | null =>
     item.ft_latitude != null && item.ft_longitude != null
-      ? googleMapsUrl({ latitude: item.ft_latitude, longitude: item.ft_longitude })
+      ? { latitude: Number(item.ft_latitude), longitude: Number(item.ft_longitude) }
       : null
+  const pendingMapsUrl = (item: PendingTransaction) => {
+    const place = pendingPlace(item)
+    return place ? googleMapsUrl(place) : null
+  }
 
   const startPending = (item: PendingTransaction) => {
     setActivePending(item)
@@ -297,7 +301,7 @@ export default function HomePageClient({
                     amount: activePending.ft_amount,
                     date: activePending.dt_date,
                     comments: activePending.ds_merchant,
-                    locationUrl: pendingMapsUrl(activePending),
+                    place: pendingPlace(activePending),
                   }
                 : undefined
             }

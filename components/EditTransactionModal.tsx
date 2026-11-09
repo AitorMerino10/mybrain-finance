@@ -40,6 +40,8 @@ import CategoryModal from './CategoryModal'
 import SubcategoryModal from './SubcategoryModal'
 import TagModal from './TagModal'
 import TagPicker from './TagPicker'
+import PlacePicker from './PlacePicker'
+import { placeFromTransaction, placeToTransactionFields, type PlaceValue } from '@/lib/places'
 
 interface EditTransactionModalProps {
   transaction: TransactionWithRelations
@@ -92,6 +94,7 @@ export default function EditTransactionModal({
   const [incomeAllocation, setIncomeAllocation] = useState<AllocationRow[] | null>(null)
   const [hadStoredAllocation, setHadStoredAllocation] = useState(false)
   const [budgetDefaults, setBudgetDefaults] = useState<SubcategoryBudgetDefault[]>([])
+  const [place, setPlace] = useState<PlaceValue | null>(() => placeFromTransaction(transaction))
   const [loading, setLoading] = useState(false)
   const [loadingSubcategories, setLoadingSubcategories] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -211,6 +214,12 @@ export default function EditTransactionModal({
 
     try {
       const amountToSend = parseFloat(amountInputValue.replace(',', '.')) || 0
+      const originalPlace = placeFromTransaction(transaction)
+      const placeChanged =
+        (place?.latitude ?? null) !== (originalPlace?.latitude ?? null) ||
+        (place?.longitude ?? null) !== (originalPlace?.longitude ?? null) ||
+        (place?.name ?? null) !== (originalPlace?.name ?? null) ||
+        (place?.placeId ?? null) !== (originalPlace?.placeId ?? null)
       
       await updateTransactionComplete(
         supabase,
@@ -230,6 +239,8 @@ export default function EditTransactionModal({
           ft_amount: amountToSend,
           dt_date: formData.dt_date,
           ds_comments: formData.ds_comments || null,
+          // Lugar: solo se envía si ha cambiado (así funciona también antes de ejecutar la migración)
+          ...(placeChanged ? placeToTransactionFields(place) : {}),
         },
         formData.ds_month_declared,
         formData.id_tag || null,
@@ -642,21 +653,24 @@ export default function EditTransactionModal({
               </>
             )}
 
+            {/* Lugar */}
+            {!transaction.ft_latitude && transaction.ds_location_url && !place && (
+              <a
+                href={transaction.ds_location_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm font-medium text-sky-700 hover:underline"
+              >
+                📍 Ver sitio del pago en Google Maps
+              </a>
+            )}
+            <PlacePicker value={place} onChange={setPlace} disabled={loading} />
+
             {/* Comentarios */}
             <div>
               <label className="block text-sm font-medium text-gray-700">
                 Comentarios
               </label>
-              {transaction.ds_location_url && (
-                <a
-                  href={transaction.ds_location_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-sky-700 hover:underline"
-                >
-                  📍 Ver sitio del pago en Google Maps
-                </a>
-              )}
               <textarea
                 value={formData.ds_comments || ''}
                 onChange={(e) =>

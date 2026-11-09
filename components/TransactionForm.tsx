@@ -40,6 +40,8 @@ import SubcategoryModal from './SubcategoryModal'
 import TagModal from './TagModal'
 import TagPicker from './TagPicker'
 import HelpTooltip from './HelpTooltip'
+import PlacePicker from './PlacePicker'
+import { placeToTransactionFields, type PlaceValue } from '@/lib/places'
 
 interface TransactionFormProps {
   transactionType: TransactionTypeName
@@ -48,7 +50,7 @@ interface TransactionFormProps {
   onSuccess?: () => void
   onCancel?: () => void
   /** Valores con los que arranca el formulario (p. ej. un gasto pendiente del móvil) */
-  initialValues?: { amount: number; date: string; comments?: string | null; locationUrl?: string | null }
+  initialValues?: { amount: number; date: string; comments?: string | null; place?: PlaceValue | null }
   /** Se llama justo después de crear la transacción (también con "Guardar y nueva") */
   onCreated?: () => void
 }
@@ -97,6 +99,7 @@ export default function TransactionForm({
   const [showSubcategoryModal, setShowSubcategoryModal] = useState(false)
   const [showTagModal, setShowTagModal] = useState(false)
   const [amountInputValue, setAmountInputValue] = useState<string>('')
+  const [place, setPlace] = useState<PlaceValue | null>(null)
 
   // Rellenar importe, fecha y nombre cuando vienen de un gasto pendiente
   useEffect(() => {
@@ -110,7 +113,8 @@ export default function TransactionForm({
       ds_comments: initialValues.comments ?? null,
     }))
     setAmountInputValue(String(initialValues.amount))
-  }, [initialValues?.amount, initialValues?.date, initialValues?.comments]) // eslint-disable-line react-hooks/exhaustive-deps
+    setPlace(initialValues.place ?? null)
+  }, [initialValues?.amount, initialValues?.date, initialValues?.comments, initialValues?.place?.latitude, initialValues?.place?.longitude]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cargar tipo de transacción, categorías, tags y miembros de la familia al montar
   useEffect(() => {
@@ -281,8 +285,8 @@ export default function TransactionForm({
           id_family: idFamily,
           id_user_creator: idUser,
           id_budget_type: transactionType === 'Expense' ? formData.id_budget_type : null,
-          // Lugar del pago (solo si viene de un gasto pendiente con ubicación)
-          ...(initialValues?.locationUrl ? { ds_location_url: initialValues.locationUrl } : {}),
+          // Lugar (solo se envía si hay: así funciona también antes de ejecutar la migración)
+          ...(place ? placeToTransactionFields(place) : {}),
           // Solo se envía si hay subpartida: así funciona también antes de ejecutar la migración
           ...(transactionType === 'Expense' && formData.id_budget_subtype
             ? { id_budget_subtype: formData.id_budget_subtype }
@@ -330,6 +334,7 @@ export default function TransactionForm({
         ds_comments: null,
       })
       setAmountInputValue('')
+      setPlace(null)
       setIncomeAllocation(null)
       setSubcategories([])
       setErrors({})
@@ -379,29 +384,6 @@ export default function TransactionForm({
           <div className="rounded-xl bg-red-50 border border-red-200 p-4">
             <p className="text-sm font-semibold text-red-800">{errors.general}</p>
           </div>
-        )}
-
-        {/* Sitio del pago (viene del atajo del móvil) */}
-        {initialValues?.locationUrl && (
-          <a
-            href={initialValues.locationUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900"
-          >
-            <span className="text-xl" aria-hidden>
-              📍
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold">Sitio del pago</span>
-              <span className="block truncate text-xs text-sky-800/80">
-                {initialValues.comments ? `${initialValues.comments} · ` : ''}Ver en Google Maps
-              </span>
-            </span>
-            <span className="text-sky-700" aria-hidden>
-              ↗
-            </span>
-          </a>
         )}
 
         {/* Personas afectadas primero - solo si hay más de uno */}
@@ -870,6 +852,9 @@ export default function TransactionForm({
           )}
         </div>
 
+
+        {/* Lugar */}
+        <PlacePicker value={place} onChange={setPlace} disabled={loading} />
 
         {/* Comentarios */}
         <div className="space-y-2">

@@ -347,6 +347,11 @@ export type Database = {
         Row: {
           ds_comments: string | null
           ds_location_url: string | null
+          ds_place_address: string | null
+          ds_place_id: string | null
+          ds_place_name: string | null
+          ft_latitude: number | null
+          ft_longitude: number | null
           ds_month_declared: string
           dt_created: string | null
           dt_date: string
@@ -364,6 +369,11 @@ export type Database = {
         Insert: {
           ds_comments?: string | null
           ds_location_url?: string | null
+          ds_place_address?: string | null
+          ds_place_id?: string | null
+          ds_place_name?: string | null
+          ft_latitude?: number | null
+          ft_longitude?: number | null
           ds_month_declared: string
           dt_created?: string | null
           dt_date: string
@@ -381,6 +391,11 @@ export type Database = {
         Update: {
           ds_comments?: string | null
           ds_location_url?: string | null
+          ds_place_address?: string | null
+          ds_place_id?: string | null
+          ds_place_name?: string | null
+          ft_latitude?: number | null
+          ft_longitude?: number | null
           ds_month_declared?: string
           dt_created?: string | null
           dt_date?: string

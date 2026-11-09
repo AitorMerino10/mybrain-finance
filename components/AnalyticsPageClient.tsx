@@ -1834,7 +1834,7 @@ function DetailsSection({
                     <td className="py-3 px-4 text-sm text-gray-900">
                       {t.ds_comments || '-'}
                       {t.ds_location_url && (
-                        <a href={t.ds_location_url} target="_blank" rel="noopener noreferrer" className="ml-1.5 no-underline" title="Ver sitio del pago en Google Maps" aria-label="Ver sitio del pago en Google Maps">
+                        <a href={t.ds_location_url} target="_blank" rel="noopener noreferrer" className="ml-1.5 no-underline" title={t.ds_place_name ? `${t.ds_place_name} · Ver en Google Maps` : 'Ver sitio del pago en Google Maps'} aria-label="Ver sitio del pago en Google Maps">
                           📍
                         </a>
                       )}
