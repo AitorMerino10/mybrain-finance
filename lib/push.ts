@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import webpush from 'web-push'
+import { sendNotification, setVapidDetails } from 'web-push'
 import type { Database } from '@/types/supabase'
 
 export type PushPayload = {
@@ -29,7 +29,7 @@ export function isPushConfigured(): boolean {
 
 function configureVapid() {
   if (vapidConfigured) return
-  webpush.setVapidDetails(
+  setVapidDetails(
     process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string,
     process.env.VAPID_PRIVATE_KEY as string
@@ -51,7 +51,7 @@ export async function sendPushToUser(admin: AdminClient, idUser: string, payload
   await Promise.all(
     subscriptions.map(async (subscription) => {
       try {
-        await webpush.sendNotification(
+        await sendNotification(
           { endpoint: subscription.ds_endpoint, keys: { p256dh: subscription.ds_p256dh, auth: subscription.ds_auth } },
           body,
           { TTL: 60 * 60 * 12 }
