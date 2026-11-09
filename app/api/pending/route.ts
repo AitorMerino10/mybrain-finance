@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { formatCurrency } from '@/lib/format'
 import { createAdminClient, isPushConfigured, sendPushToUser } from '@/lib/push'
-import { cleanText, hashApiToken, parseAmount, parseDate } from '@/lib/pending-server'
+import { cleanText, hashApiToken, parseAmount, parseCoordinate, parseDate } from '@/lib/pending-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,6 +49,9 @@ export async function POST(req: NextRequest) {
   const merchant = cleanText(body.merchant)
   const card = cleanText(body.card, 60)
   const date = parseDate(body.date)
+  const latitude = parseCoordinate(body.latitude, 90)
+  const longitude = parseCoordinate(body.longitude, 180)
+  const hasLocation = latitude !== null && longitude !== null
 
   // Algunos móviles lanzan la automatización dos veces: si llega lo mismo en 3 minutos, se ignora
   const since = new Date(Date.now() - 3 * 60 * 1000).toISOString()
@@ -65,7 +68,16 @@ export async function POST(req: NextRequest) {
 
   const { data: created, error } = await admin
     .from('pml_pending_transaction')
-    .insert({ id_user: owner.id_user, id_family: owner.id_family, ft_amount: amount, ds_merchant: merchant, ds_card: card, dt_date: date })
+    .insert({
+      id_user: owner.id_user,
+      id_family: owner.id_family,
+      ft_amount: amount,
+      ds_merchant: merchant,
+      ds_card: card,
+      dt_date: date,
+      // Solo se envían si hay ubicación: así funciona también antes de ejecutar la migración
+      ...(hasLocation ? { ft_latitude: latitude, ft_longitude: longitude } : {}),
+    })
     .select('id_pending_transaction')
     .single()
   if (error || !created) {

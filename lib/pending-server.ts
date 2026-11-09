@@ -54,3 +54,11 @@ export function cleanText(raw: unknown, max = 120): string | null {
   const text = raw.replace(/\s+/g, ' ').trim()
   return text ? text.slice(0, max) : null
 }
+
+/** Latitud/longitud que manda el móvil ("41,3874", "41.3874"...). null si no es válida o vale 0 en ambas. */
+export function parseCoordinate(raw: unknown, limit: number): number | null {
+  const cleaned = typeof raw === 'string' ? raw.replace(/[^\d.,-]/g, '').replace(',', '.') : ''
+  const value = typeof raw === 'number' ? raw : cleaned ? Number(cleaned) : NaN
+  if (!Number.isFinite(value) || Math.abs(value) > limit) return null
+  return Math.round(value * 1e6) / 1e6
+}

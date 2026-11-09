@@ -1831,7 +1831,14 @@ function DetailsSection({
                         : '-'
                       }
                                           </td>
-                    <td className="py-3 px-4 text-sm text-gray-900">{t.ds_comments || '-'}</td>
+                    <td className="py-3 px-4 text-sm text-gray-900">
+                      {t.ds_comments || '-'}
+                      {t.ds_location_url && (
+                        <a href={t.ds_location_url} target="_blank" rel="noopener noreferrer" className="ml-1.5 no-underline" title="Ver sitio del pago en Google Maps" aria-label="Ver sitio del pago en Google Maps">
+                          📍
+                        </a>
+                      )}
+                    </td>
                     <td className="py-3 px-4 text-sm text-right font-semibold text-gray-900">
                       {formatCurrency(t.ft_amount || 0)}
                                           </td>

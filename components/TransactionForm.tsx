@@ -48,7 +48,7 @@ interface TransactionFormProps {
   onSuccess?: () => void
   onCancel?: () => void
   /** Valores con los que arranca el formulario (p. ej. un gasto pendiente del móvil) */
-  initialValues?: { amount: number; date: string; comments?: string | null }
+  initialValues?: { amount: number; date: string; comments?: string | null; locationUrl?: string | null }
   /** Se llama justo después de crear la transacción (también con "Guardar y nueva") */
   onCreated?: () => void
 }
@@ -281,6 +281,8 @@ export default function TransactionForm({
           id_family: idFamily,
           id_user_creator: idUser,
           id_budget_type: transactionType === 'Expense' ? formData.id_budget_type : null,
+          // Lugar del pago (solo si viene de un gasto pendiente con ubicación)
+          ...(initialValues?.locationUrl ? { ds_location_url: initialValues.locationUrl } : {}),
           // Solo se envía si hay subpartida: así funciona también antes de ejecutar la migración
           ...(transactionType === 'Expense' && formData.id_budget_subtype
             ? { id_budget_subtype: formData.id_budget_subtype }

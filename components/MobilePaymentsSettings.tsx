@@ -167,16 +167,19 @@ export default function MobilePaymentsSettings({ idFamily }: { idFamily: string 
             Elige las tarjetas que quieres vigilar y marca <strong>Ejecutar inmediatamente</strong> (así no te pide confirmar cada vez). Siguiente.
           </li>
           <li>
-            <strong>Crear atajo nuevo</strong> → añade la acción <strong>Obtener contenido de URL</strong>.
+            <strong>Crear atajo nuevo</strong>. Primero añade la acción <strong>Obtener ubicación actual</strong> (para guardar dónde pagas; la primera vez iOS te pedirá permiso:
+            elige <strong>Permitir siempre</strong>). Después añade <strong>Obtener contenido de URL</strong>.
           </li>
           <li>
-            URL: la de arriba. Pulsa <strong>Mostrar más</strong> y pon: Método <strong>POST</strong>; en Encabezados añade <code>Authorization</code> con el valor de arriba;
-            Cuerpo de la solicitud: <strong>JSON</strong>.
+            URL: la de arriba. Pulsa <strong>Mostrar más</strong> y pon: Método <strong>POST</strong>; en Encabezados, <strong>Clave</strong> = <code>Authorization</code> y{' '}
+            <strong>Texto</strong> = el valor de arriba (<code>Bearer …</code>); Cuerpo de la solicitud: <strong>JSON</strong>.
           </li>
           <li>
-            Añade estos campos de tipo <strong>Texto</strong>: <code>amount</code>, <code>merchant</code>, <code>card</code> y <code>date</code>. En cada uno toca el valor, elige
-            la variable <strong>Entrada del atajo</strong> y escoge su propiedad: <strong>Importe</strong>, <strong>Comercio</strong>, <strong>Tarjeta o pase</strong> y{' '}
-            <strong>Fecha</strong>. Si alguna no aparece, déjala vacía: solo <code>amount</code> es obligatorio.
+            Añade estos campos de tipo <strong>Texto</strong> (la <strong>Clave</strong> es el nombre y el <strong>Texto</strong> el valor): <code>amount</code>, <code>merchant</code>,{' '}
+            <code>card</code>, <code>date</code>, <code>latitude</code> y <code>longitude</code>. En los cuatro primeros toca el valor, elige la variable{' '}
+            <strong>Entrada del atajo</strong> y su propiedad: <strong>Importe</strong>, <strong>Comercio</strong>, <strong>Tarjeta o pase</strong> y <strong>Fecha</strong>. En{' '}
+            <code>latitude</code> y <code>longitude</code> elige la variable <strong>Ubicación actual</strong> y su propiedad <strong>Latitud</strong> y <strong>Longitud</strong>. Si alguna
+            no aparece, quítala: solo <code>amount</code> es obligatorio.
           </li>
           <li>Pulsa <strong>Ok</strong> para guardar la automatización.</li>
         </ol>

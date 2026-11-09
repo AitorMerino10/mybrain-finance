@@ -9,6 +9,7 @@ import TransactionForm from './TransactionForm'
 import type { TransactionTypeName } from '@/types/transactions'
 import { formatCurrency, formatDate } from '@/lib/format'
 import LocalModeBanner from './LocalModeBanner'
+import { googleMapsUrl } from '@/lib/places'
 import { deletePendingTransaction, getPendingTransactions, type PendingTransaction } from '@/lib/pending'
 
 interface HomePageClientProps {
@@ -70,6 +71,11 @@ export default function HomePageClient({
       console.error('No se pudo borrar el pendiente:', error)
     }
   }
+
+  const pendingMapsUrl = (item: PendingTransaction) =>
+    item.ft_latitude != null && item.ft_longitude != null
+      ? googleMapsUrl({ merchant: item.ds_merchant, latitude: item.ft_latitude, longitude: item.ft_longitude })
+      : null
 
   const startPending = (item: PendingTransaction) => {
     setActivePending(item)
@@ -278,7 +284,12 @@ export default function HomePageClient({
             idUser={idUser}
             initialValues={
               activePending
-                ? { amount: activePending.ft_amount, date: activePending.dt_date, comments: activePending.ds_merchant }
+                ? {
+                    amount: activePending.ft_amount,
+                    date: activePending.dt_date,
+                    comments: activePending.ds_merchant,
+                    locationUrl: pendingMapsUrl(activePending),
+                  }
                 : undefined
             }
             onCreated={() => {
@@ -331,6 +342,14 @@ export default function HomePageClient({
                   <p className="text-xs text-gray-500">
                     {formatCurrency(item.ft_amount)} · {new Date(`${item.dt_date}T00:00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
                     {item.ds_card ? ` · ${item.ds_card}` : ''}
+                    {pendingMapsUrl(item) && (
+                      <>
+                        {' · '}
+                        <a href={pendingMapsUrl(item) as string} target="_blank" rel="noopener noreferrer" className="font-medium text-sky-700 hover:underline">
+                          📍 Ver sitio
+                        </a>
+                      </>
+                    )}
                   </p>
                 </div>
                 <button

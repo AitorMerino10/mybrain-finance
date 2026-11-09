@@ -647,6 +647,16 @@ export default function EditTransactionModal({
               <label className="block text-sm font-medium text-gray-700">
                 Comentarios
               </label>
+              {transaction.ds_location_url && (
+                <a
+                  href={transaction.ds_location_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-sky-700 hover:underline"
+                >
+                  📍 Ver sitio del pago en Google Maps
+                </a>
+              )}
               <textarea
                 value={formData.ds_comments || ''}
                 onChange={(e) =>

@@ -346,6 +346,7 @@ export type Database = {
       gnp_fct_transactions: {
         Row: {
           ds_comments: string | null
+          ds_location_url: string | null
           ds_month_declared: string
           dt_created: string | null
           dt_date: string
@@ -362,6 +363,7 @@ export type Database = {
         }
         Insert: {
           ds_comments?: string | null
+          ds_location_url?: string | null
           ds_month_declared: string
           dt_created?: string | null
           dt_date: string
@@ -378,6 +380,7 @@ export type Database = {
         }
         Update: {
           ds_comments?: string | null
+          ds_location_url?: string | null
           ds_month_declared?: string
           dt_created?: string | null
           dt_date?: string
@@ -445,6 +448,8 @@ export type Database = {
           ds_merchant: string | null
           ds_source: string
           ft_amount: number
+          ft_latitude: number | null
+          ft_longitude: number | null
           id_family: string
           id_pending_transaction: string
           id_user: string
@@ -456,6 +461,8 @@ export type Database = {
           ds_merchant?: string | null
           ds_source?: string
           ft_amount: number
+          ft_latitude?: number | null
+          ft_longitude?: number | null
           id_family: string
           id_pending_transaction?: string
           id_user: string
@@ -467,6 +474,8 @@ export type Database = {
           ds_merchant?: string | null
           ds_source?: string
           ft_amount?: number
+          ft_latitude?: number | null
+          ft_longitude?: number | null
           id_family?: string
           id_pending_transaction?: string
           id_user?: string
