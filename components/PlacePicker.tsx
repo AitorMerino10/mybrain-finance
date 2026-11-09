@@ -61,6 +61,9 @@ export default function PlacePicker({ value, onChange, disabled = false }: Place
   useEffect(() => {
     if (!isGoogleMapsConfigured) return
     let cancelled = false
+    // Google avisa aquí cuando rechaza la clave (restricción de dominio, API sin activar, facturación...)
+    ;(window as unknown as { gm_authFailure?: () => void }).gm_authFailure = () =>
+      setError('Google ha rechazado la clave: revisa que las APIs estén activadas, la facturación y la restricción de dominio.')
     loadGoogleMaps()
       .then(() => !cancelled && setReady(true))
       .catch(() => !cancelled && setError('No se pudo cargar Google Maps.'))
@@ -107,7 +110,11 @@ export default function PlacePicker({ value, onChange, disabled = false }: Place
 
       mapRef.current = map
       markerRef.current = marker
-    })().catch(() => setError('No se pudo mostrar el mapa.'))
+    })().catch((mapError: unknown) => {
+      console.error('Error al mostrar el mapa:', mapError)
+      const detail = mapError instanceof Error ? mapError.message : String(mapError)
+      setError(`No se pudo mostrar el mapa (${detail.slice(0, 160)}).`)
+    })
     return () => {
       cancelled = true
       mapRef.current = null
