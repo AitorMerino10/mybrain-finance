@@ -437,6 +437,84 @@ export type Database = {
           },
         ]
       }
+      pml_cfg_push_subscription: {
+        Row: {
+          dt_created: string
+          dt_last_used: string | null
+          ds_auth: string
+          ds_endpoint: string
+          ds_p256dh: string
+          ds_user_agent: string | null
+          id_push_subscription: string
+          id_user: string
+        }
+        Insert: {
+          dt_created?: string
+          dt_last_used?: string | null
+          ds_auth: string
+          ds_endpoint: string
+          ds_p256dh: string
+          ds_user_agent?: string | null
+          id_push_subscription?: string
+          id_user: string
+        }
+        Update: {
+          dt_created?: string
+          dt_last_used?: string | null
+          ds_auth?: string
+          ds_endpoint?: string
+          ds_p256dh?: string
+          ds_user_agent?: string | null
+          id_push_subscription?: string
+          id_user?: string
+        }
+        Relationships: []
+      }
+      pml_cfg_notification_pref: {
+        Row: {
+          dt_updated: string
+          id_user: string
+          is_budget_alerts: boolean
+          is_close_alerts: boolean
+          is_unassigned_alerts: boolean
+          nu_warn_percent: number
+        }
+        Insert: {
+          dt_updated?: string
+          id_user: string
+          is_budget_alerts?: boolean
+          is_close_alerts?: boolean
+          is_unassigned_alerts?: boolean
+          nu_warn_percent?: number
+        }
+        Update: {
+          dt_updated?: string
+          id_user?: string
+          is_budget_alerts?: boolean
+          is_close_alerts?: boolean
+          is_unassigned_alerts?: boolean
+          nu_warn_percent?: number
+        }
+        Relationships: []
+      }
+      pml_log_push_sent: {
+        Row: {
+          ds_key: string
+          dt_sent: string
+          id_user: string
+        }
+        Insert: {
+          ds_key: string
+          dt_sent?: string
+          id_user: string
+        }
+        Update: {
+          ds_key?: string
+          dt_sent?: string
+          id_user?: string
+        }
+        Relationships: []
+      }
       pml_cfg_budget_close: {
         Row: {
           dt_close_month: string

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import CategoryManager from '@/components/CategoryManager'
+import NotificationsSettings from '@/components/NotificationsSettings'
 import HelpTooltip from '@/components/HelpTooltip'
 import { getUserFamilies } from '@/lib/family'
 import Link from 'next/link'
@@ -67,6 +68,10 @@ export default async function SettingsPage({
                 <h1 className="text-2xl sm:text-3xl font-bold italic text-gray-900 mb-1.5">Configuración</h1>
                 <HelpTooltip content="Crea todo lo que necesites y ordénalo a tu gusto para encontrarlas antes." />
               </div>
+            </div>
+
+            <div className="mb-4 sm:mb-6 rounded-2xl bg-white p-4 sm:p-6 shadow-sm border border-gray-100">
+              <NotificationsSettings />
             </div>
 
             <div className="rounded-2xl bg-white p-4 sm:p-6 shadow-sm border border-gray-100">

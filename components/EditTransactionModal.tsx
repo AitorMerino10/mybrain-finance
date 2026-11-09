@@ -1,5 +1,6 @@
 'use client'
 
+import { checkBudgetAlerts } from '@/lib/push-client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
@@ -234,6 +235,7 @@ export default function EditTransactionModal({
         formData.id_tag || null,
         formData.selectedUsers && formData.selectedUsers.length > 0 ? formData.selectedUsers : undefined
       )
+      if (transactionType === 'Expense') checkBudgetAlerts(idFamily)
 
       // Reparto del ingreso: se guarda si lo has personalizado y se borra si vuelves al reparto por defecto
       if (transactionType === 'Income' && (incomeAllocation !== null || hadStoredAllocation)) {

@@ -10,6 +10,7 @@ import {
 import { getTagsByFamily } from '@/lib/tags'
 import { getFamilyMembers, type FamilyMember } from '@/lib/family'
 import { createTransaction } from '@/lib/transactions'
+import { checkBudgetAlerts } from '@/lib/push-client'
 import { replaceIncomeAllocations, type AllocationRow } from '@/lib/income-allocations'
 import IncomeAllocationEditor, { allocationIsValid } from './IncomeAllocationEditor'
 import {
@@ -270,6 +271,7 @@ export default function TransactionForm({
         usersToAssociate.length > 0 ? usersToAssociate : undefined
       )
       trackTestTransaction(created.id_transaction)
+      if (transactionType === 'Expense') checkBudgetAlerts(idFamily)
 
       // Reparto personalizado del ingreso entre partidas (si no se toca, se calcula con el presupuesto y no se guarda)
       if (transactionType === 'Income' && incomeAllocation !== null) {
