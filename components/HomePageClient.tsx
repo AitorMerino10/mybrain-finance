@@ -74,7 +74,7 @@ export default function HomePageClient({
 
   const pendingMapsUrl = (item: PendingTransaction) =>
     item.ft_latitude != null && item.ft_longitude != null
-      ? googleMapsUrl({ merchant: item.ds_merchant, latitude: item.ft_latitude, longitude: item.ft_longitude })
+      ? googleMapsUrl({ latitude: item.ft_latitude, longitude: item.ft_longitude })
       : null
 
   const startPending = (item: PendingTransaction) => {
