@@ -47,7 +47,8 @@ export type BudgetAnalyticsData = {
 
 export async function loadBudgetAnalyticsData(
   supabase: SupabaseClient<Database>,
-  idFamily: string
+  idFamily: string,
+  options: { force?: boolean } = {}
 ): Promise<BudgetAnalyticsData> {
   const [members, budgetTypes, budgets, defaultsList, goals, transactions, categories] = await Promise.all([
     getFamilyMembers(supabase, idFamily),
@@ -55,15 +56,22 @@ export async function loadBudgetAnalyticsData(
     getUserBudgetHistory(supabase, idFamily),
     getSubcategoryBudgetDefaults(supabase, idFamily),
     getSpendingGoals(supabase, { idFamily }),
-    fetchCalculatorTransactions(idFamily),
+    fetchCalculatorTransactions(idFamily, { force: options.force }),
     getAllCategoriesByFamily(supabase, idFamily),
   ])
 
-  const subcategoryLists = await Promise.all(
-    categories
-      .filter((category) => category.is_expense)
-      .map((category) => getSubcategoriesByCategory(supabase, category.id_category))
-  )
+  // Todas las subcategorías de gasto en una sola consulta (antes eran una por categoría)
+  const expenseCategoryIds = categories.filter((category) => category.is_expense).map((category) => category.id_category)
+  let subcategories: Subcategory[] = []
+  if (expenseCategoryIds.length > 0) {
+    const { data, error } = await supabase
+      .from('pml_dim_subcategory')
+      .select('*')
+      .in('id_category', expenseCategoryIds)
+      .order('ds_subcategory', { ascending: true })
+    if (error) throw error
+    subcategories = data || []
+  }
 
   return {
     members,
@@ -73,7 +81,7 @@ export async function loadBudgetAnalyticsData(
     goals,
     transactions,
     categories,
-    subcategories: subcategoryLists.flat(),
+    subcategories,
   }
 }
 

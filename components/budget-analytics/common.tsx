@@ -26,11 +26,11 @@ export function useBudgetAnalyticsData(idFamily: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     try {
       setLoading(true)
       setError(null)
-      setData(await loadBudgetAnalyticsData(supabase, idFamily))
+      setData(await loadBudgetAnalyticsData(supabase, idFamily, { force }))
     } catch (err) {
       console.error('Error al cargar la analítica de presupuestos:', err)
       setError((err as { message?: string })?.message || 'Error al cargar los datos')
@@ -43,7 +43,10 @@ export function useBudgetAnalyticsData(idFamily: string) {
     load()
   }, [load])
 
-  return { data, loading, error, reload: load }
+  // Tras guardar algo se vuelve a pedir todo saltándose la caché
+  const reload = useCallback(() => load(true), [load])
+
+  return { data, loading, error, reload }
 }
 
 // ==================== COLORES Y ESTADOS ====================

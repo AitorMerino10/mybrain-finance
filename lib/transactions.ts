@@ -2,6 +2,7 @@ import type { Database } from '@/types/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { convertMonthYearToDBFormat, formatMonthDeclared } from './date-utils'
 import { associateTagToTransaction } from './tags'
+import { invalidateTransactionsCache } from './transactions-cache'
 import type { TransactionInsert, TransactionUpdate } from '@/types/transactions'
 
 type Transaction = Database['public']['Tables']['gnp_fct_transactions']['Row']
@@ -44,6 +45,7 @@ export async function createTransaction(
   id_tag?: string | null,
   userIds?: string[]
 ): Promise<Transaction> {
+  invalidateTransactionsCache()
   // Convertir MM-YYYY a YYYY-MM
   const ds_month_declared_db = convertMonthYearToDBFormat(ds_month_declared)
 
@@ -246,6 +248,7 @@ export async function updateTransaction(
     dt_date?: string
   }
 ): Promise<Transaction> {
+  invalidateTransactionsCache()
   // Si se actualiza dt_date y NO se proporciona ds_month_declared, recalcularlo
   const updateData: TransactionUpdate = { ...transactionData }
   
@@ -292,6 +295,7 @@ export async function updateTransactionComplete(
   id_tag?: string | null,
   userIds?: string[]
 ): Promise<Transaction> {
+  invalidateTransactionsCache()
   // Calcular mes declarado
   let ds_month_declared_db: string
   if (ds_month_declared) {
@@ -360,6 +364,7 @@ export async function deleteTransaction(
   supabase: SupabaseClient<Database>,
   idTransaction: string
 ): Promise<void> {
+  invalidateTransactionsCache()
   // Los fondos ya no existen en la app, pero si quedan movimientos antiguos en la BD se borran antes (si la tabla existe)
   const { error: movementsError } = await supabase
     .from('gnp_fct_fund_movements')

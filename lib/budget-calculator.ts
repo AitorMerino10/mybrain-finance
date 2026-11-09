@@ -1,3 +1,4 @@
+import { cachedLoad } from '@/lib/transactions-cache'
 import type { BudgetType } from '@/lib/budgets'
 
 // ==================== TIPOS ====================
@@ -227,37 +228,54 @@ function mapRow(row: any): CalcTransaction {
   }
 }
 
+/** Descarga una página de transacciones de la API de analítica. */
+async function fetchTransactionsPage(idFamily: string, offset: number): Promise<any[]> {
+  const response = await fetch('/api/analytics/transactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idFamily, limit: PAGE_SIZE, offset }),
+  })
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al cargar transacciones')
+  }
+  return (data.transactions || []) as any[]
+}
+
+/** Páginas que se piden a la vez cuando la familia tiene muchas transacciones */
+const PARALLEL_PAGES = 4
+
 /**
  * Carga TODAS las transacciones de la familia paginando la API de analítica
- * (la API corta en 1000 filas si no se pagina).
+ * (la API corta en 1000 filas si no se pagina). La primera página va sola (a una familia pequeña
+ * le basta) y el resto se piden de 4 en 4 en paralelo. El resultado se reutiliza 60 s entre pantallas.
  */
-export async function fetchCalculatorTransactions(
-  idFamily: string
-): Promise<CalcTransaction[]> {
-  const all = new Map<string, CalcTransaction>()
-  let offset = 0
+export function fetchCalculatorTransactions(idFamily: string, options: { force?: boolean } = {}): Promise<CalcTransaction[]> {
+  return cachedLoad(
+    `transactions:${idFamily}`,
+    async () => {
+      const all = new Map<string, CalcTransaction>()
+      const add = (rows: any[]) => rows.forEach((row) => all.set(row.id_transaction, mapRow(row)))
 
-  while (true) {
-    const response = await fetch('/api/analytics/transactions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idFamily, limit: PAGE_SIZE, offset }),
-    })
-    const data = await response.json()
-    if (!response.ok) {
-      throw new Error(data.error || 'Error al cargar transacciones')
-    }
+      const first = await fetchTransactionsPage(idFamily, 0)
+      add(first)
+      let done = first.length < PAGE_SIZE
+      let offset = PAGE_SIZE
 
-    const rows = (data.transactions || []) as any[]
-    for (const row of rows) {
-      all.set(row.id_transaction, mapRow(row))
-    }
+      while (!done) {
+        const offsets = Array.from({ length: PARALLEL_PAGES }, (_, index) => offset + index * PAGE_SIZE)
+        const pages = await Promise.all(offsets.map((pageOffset) => fetchTransactionsPage(idFamily, pageOffset)))
+        for (const rows of pages) {
+          add(rows)
+          if (rows.length < PAGE_SIZE) done = true
+        }
+        offset += PARALLEL_PAGES * PAGE_SIZE
+      }
 
-    if (rows.length < PAGE_SIZE) break
-    offset += PAGE_SIZE
-  }
-
-  return Array.from(all.values())
+      return Array.from(all.values())
+    },
+    options.force
+  )
 }
 
 // ==================== CÁLCULOS ====================

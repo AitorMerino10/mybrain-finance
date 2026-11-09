@@ -180,7 +180,8 @@ export default function HomePageClient({
             idCategories: null,
             idSubcategories: null,
             idTags: null,
-            monthsDeclared: null,
+            // Solo se necesitan estos dos meses (antes se descargaba todo el histórico)
+            monthsDeclared: [getCurrentMonth(), getPreviousMonth()],
             dateFrom: null,
             dateTo: null,
             startMonth: null,
