@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import CardAssignmentsSettings from './CardAssignmentsSettings'
 
 type TokenInfo = { idFamily: string; createdAt: string; lastUsedAt: string | null } | null
 
@@ -194,6 +195,8 @@ export default function MobilePaymentsSettings({ idFamily }: { idFamily: string 
           completar el gasto.
         </p>
       </div>
+
+      <CardAssignmentsSettings idFamily={idFamily} />
     </div>
   )
 }

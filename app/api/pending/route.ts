@@ -1,3 +1,4 @@
+import { cardKey } from '@/lib/cards'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { formatCurrency } from '@/lib/format'
@@ -98,6 +99,14 @@ export async function POST(req: NextRequest) {
   if (error || !created) {
     console.error('Error guardando el gasto pendiente:', error?.message)
     return NextResponse.json({ error: 'No se pudo guardar el gasto' }, { status: 500 })
+  }
+
+  // Se apunta la tarjeta para poder asignarla a personas en Configuración (si ya existe, no se toca)
+  if (card && cardKey(card)) {
+    const { error: cardError } = await admin
+      .from('pml_cfg_card_assignment')
+      .upsert({ id_family: owner.id_family, ds_card: card, ds_card_key: cardKey(card) }, { onConflict: 'id_family,ds_card_key', ignoreDuplicates: true })
+    if (cardError) console.warn('No se pudo registrar la tarjeta:', cardError.message)
   }
 
   await admin.from('pml_cfg_api_token').update({ dt_last_used: new Date().toISOString() }).eq('id_user', owner.id_user)

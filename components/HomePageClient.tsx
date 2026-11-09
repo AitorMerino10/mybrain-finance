@@ -12,6 +12,8 @@ import LocalModeBanner from './LocalModeBanner'
 import { googleMapsUrl, type PlaceValue } from '@/lib/places'
 import { deletePendingTransaction, getPendingTransactions, type PendingTransaction } from '@/lib/pending'
 import { getRecurringExpenses, type RecurringExpense } from '@/lib/recurring'
+import { findCardAssignment, getCardAssignments, type CardAssignment } from '@/lib/cards'
+import { getFamilyMembers, type FamilyMember } from '@/lib/family'
 
 interface HomePageClientProps {
   idFamily: string
@@ -55,6 +57,18 @@ export default function HomePageClient({
   const [pending, setPending] = useState<PendingTransaction[]>([])
   const [activePending, setActivePending] = useState<PendingTransaction | null>(null)
   const [recurringRules, setRecurringRules] = useState<Record<string, RecurringExpense>>({})
+  const [cardAssignments, setCardAssignments] = useState<CardAssignment[]>([])
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
+
+  /** Personas a las que se asigna por defecto un pendiente según la tarjeta con la que se pagó */
+  const cardUserIds = (item: PendingTransaction): string[] => {
+    const assignment = findCardAssignment(cardAssignments, item.ds_card)
+    return assignment ? assignment.ds_user_ids.filter((id) => familyMembers.some((member) => member.id_user === id)) : []
+  }
+  const memberLabel = (id: string) => {
+    const member = familyMembers.find((item) => item.id_user === id)
+    return member?.ds_user || member?.ds_email?.split('@')[0] || 'Alguien'
+  }
 
   const closeForm = () => {
     setShowTransactionForm(false)
@@ -124,6 +138,22 @@ export default function HomePageClient({
     getRecurringExpenses(supabase, idFamily).then((rules) => {
       if (!cancelled) setRecurringRules(Object.fromEntries(rules.map((rule) => [rule.id_recurring_expense, rule])))
     })
+    return () => {
+      cancelled = true
+    }
+  }, [pending, idFamily])
+
+  // Tarjetas asignadas a personas: dan las personas por defecto de los pagos con el móvil
+  useEffect(() => {
+    if (!pending.some((item) => item.ds_card)) return
+    let cancelled = false
+    Promise.all([getCardAssignments(supabase, idFamily), getFamilyMembers(supabase, idFamily)])
+      .then(([assignments, members]) => {
+        if (cancelled) return
+        setCardAssignments(assignments)
+        setFamilyMembers(members)
+      })
+      .catch((error) => console.warn('No se pudieron cargar las tarjetas:', error))
     return () => {
       cancelled = true
     }
@@ -316,6 +346,9 @@ export default function HomePageClient({
                     date: activePending.dt_date,
                     comments: activePending.ds_merchant,
                     place: pendingPlace(activePending),
+                    ...(!activePending.id_recurring_expense && cardUserIds(activePending).length > 0
+                      ? { userIds: cardUserIds(activePending) }
+                      : {}),
                     ...(activePending.id_recurring_expense
                       ? {
                           recurringId: activePending.id_recurring_expense,
@@ -386,6 +419,7 @@ export default function HomePageClient({
                   <p className="text-xs text-gray-500">
                     {formatCurrency(item.ft_amount)} · {new Date(`${item.dt_date}T00:00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
                     {item.ds_card ? ` · ${item.ds_card}` : ''}
+                    {cardUserIds(item).length > 1 && ` · 👥 ${cardUserIds(item).map(memberLabel).join(' y ')}`}
                     {pendingMapsUrl(item) && (
                       <>
                         {' · '}

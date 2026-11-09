@@ -143,13 +143,13 @@ export default function TransactionForm({
     setPlace(initialValues.place ?? null)
   }, [initialValues?.amount, initialValues?.date, initialValues?.comments, initialValues?.place?.latitude, initialValues?.place?.longitude, initialValues?.recurringId, initialValues?.categoryId, initialValues?.budgetTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Personas afectadas que vienen de un gasto recurrente (se aplican cuando ya se han cargado los miembros de la familia)
+  // Personas afectadas que vienen de un gasto recurrente o de la tarjeta del pago (se aplican cuando ya se han cargado los miembros de la familia)
   useEffect(() => {
     const ids = initialValues?.userIds
     if (!ids || ids.length === 0 || familyMembers.length === 0) return
     const valid = ids.filter((id) => familyMembers.some((member) => member.id_user === id))
     if (valid.length > 0) setFormData((prev) => ({ ...prev, selectedUsers: valid }))
-  }, [familyMembers, initialValues?.recurringId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [familyMembers, initialValues?.recurringId, initialValues?.userIds?.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cargar tipo de transacción, categorías, tags y miembros de la familia al montar
   useEffect(() => {

@@ -458,6 +458,33 @@ export type Database = {
           },
         ]
       }
+      pml_cfg_card_assignment: {
+        Row: {
+          ds_card: string
+          ds_card_key: string
+          ds_user_ids: string[]
+          dt_created: string
+          id_card_assignment: string
+          id_family: string
+        }
+        Insert: {
+          ds_card: string
+          ds_card_key: string
+          ds_user_ids?: string[]
+          dt_created?: string
+          id_card_assignment?: string
+          id_family: string
+        }
+        Update: {
+          ds_card?: string
+          ds_card_key?: string
+          ds_user_ids?: string[]
+          dt_created?: string
+          id_card_assignment?: string
+          id_family?: string
+        }
+        Relationships: []
+      }
       pml_cfg_recurring_expense: {
         Row: {
           ds_comments: string | null
