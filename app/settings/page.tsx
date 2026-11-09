@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import CategoryManager from '@/components/CategoryManager'
 import NotificationsSettings from '@/components/NotificationsSettings'
+import RecurringSettings from '@/components/RecurringSettings'
 import MobilePaymentsSettings from '@/components/MobilePaymentsSettings'
 import SettingsMenu, { type SettingsSection } from '@/components/SettingsMenu'
 import HelpTooltip from '@/components/HelpTooltip'
@@ -43,7 +44,13 @@ export default async function SettingsPage({
   }
 
   const section: SettingsSection =
-    searchParams.section === 'notificaciones' ? 'notificaciones' : searchParams.section === 'pagos' ? 'pagos' : 'verticales'
+    searchParams.section === 'notificaciones'
+      ? 'notificaciones'
+      : searchParams.section === 'pagos'
+        ? 'pagos'
+        : searchParams.section === 'recurrentes'
+          ? 'recurrentes'
+          : 'verticales'
   const showAdmin = isAppAdmin(user.id, userData?.ds_email || null)
 
   return (
@@ -82,6 +89,8 @@ export default async function SettingsPage({
             <div className="rounded-2xl bg-white p-4 sm:p-6 shadow-sm border border-gray-100">
               {section === 'notificaciones' ? (
                 <NotificationsSettings />
+              ) : section === 'recurrentes' ? (
+                <RecurringSettings idFamily={selectedFamilyId} idUser={user.id} />
               ) : section === 'pagos' ? (
                 <MobilePaymentsSettings idFamily={selectedFamilyId} />
               ) : (

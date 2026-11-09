@@ -8,9 +8,17 @@ export type NotificationPrefs = {
   goalAlerts: boolean
   warnPercent: number
   closeAlerts: boolean
+  pendingAlerts: boolean
+  forecastAlerts: boolean
+  recurringAlerts: boolean
 }
 
-const DEFAULTS: NotificationPrefs = { dailyReminder: true, budgetAlerts: true, goalAlerts: true, warnPercent: 80, closeAlerts: true }
+const DEFAULTS: NotificationPrefs = { dailyReminder: true, budgetAlerts: true, goalAlerts: true, warnPercent: 80,
+  closeAlerts: true,
+  pendingAlerts: true,
+  forecastAlerts: true,
+  recurringAlerts: true,
+}
 
 export async function GET() {
   const supabase = createClient()
@@ -27,6 +35,9 @@ export async function GET() {
         goalAlerts: data.is_goal_alerts ?? true,
         warnPercent: data.nu_warn_percent,
         closeAlerts: data.is_close_alerts,
+        pendingAlerts: data.is_pending_alerts ?? true,
+        forecastAlerts: data.is_forecast_alerts ?? true,
+        recurringAlerts: data.is_recurring_alerts ?? true,
       }
     : DEFAULTS
   return NextResponse.json({ prefs })
@@ -51,6 +62,9 @@ export async function POST(req: NextRequest) {
     is_goal_alerts: Boolean(merged.goalAlerts),
     nu_warn_percent: warnPercent,
     is_close_alerts: Boolean(merged.closeAlerts),
+    is_pending_alerts: Boolean(merged.pendingAlerts),
+    is_forecast_alerts: Boolean(merged.forecastAlerts),
+    is_recurring_alerts: Boolean(merged.recurringAlerts),
     dt_updated: new Date().toISOString(),
   })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

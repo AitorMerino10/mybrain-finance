@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   budgetCoverageStart,
@@ -26,6 +26,9 @@ import { getScopedAmount } from '@/lib/budget-calculator'
 import { planInForce, saveBudgetPlan, type BudgetPlan } from '@/lib/budget-plans'
 import { supabase } from '@/lib/supabase'
 import SpendTreeView from './budget-analytics/SpendTreeView'
+import MonthForecastCard from './MonthForecastCard'
+import { getRecurringExpenses, type RecurringExpense } from '@/lib/recurring'
+import type { PendingRecurring } from '@/lib/budget-forecast'
 import TransactionEditProvider, { EditTransactionButton } from './budget-analytics/TransactionEditProvider'
 import {
   CONTROL_ACCENT,
@@ -483,6 +486,8 @@ function MemberSections({
   name,
   data,
   balanceExtras,
+  recurring,
+  pendingRecurring,
 }: {
   idFamily: string
   idUser: string
@@ -490,6 +495,8 @@ function MemberSections({
   name: string
   data: BudgetAnalyticsData
   balanceExtras: ReturnType<typeof useBalanceExtras>
+  recurring: RecurringExpense[]
+  pendingRecurring: PendingRecurring[]
 }) {
   const nowMonth = currentMonthKey()
   const { allocations, closes, plans: extraPlans, subtypes: extraSubtypes } = balanceExtras.extras
@@ -569,6 +576,9 @@ function MemberSections({
     <div className="space-y-6 sm:space-y-8">
       {/* 0. Objetivo de ahorro del periodo */}
       {balance && sortedRows.length > 0 && <SavingsGoalCard goal={goal} cycleStart={balance.cycleStart} idFamily={idFamily} plan={planNow} onSaveGoal={saveGoal} />}
+
+      {/* 0b. Previsión de fin de mes */}
+      {sortedRows.length > 0 && <MonthForecastCard idFamily={idFamily} idUser={idUser} data={data} rules={recurring} pending={pendingRecurring} />}
 
       {/* 1. Partidas mensuales */}
       <Card
@@ -703,6 +713,30 @@ export default function HomeBudgetOverview({ idFamily, idUser }: { idFamily: str
   const { data, loading, error, reload } = useBudgetAnalyticsData(idFamily)
   const balanceExtras = useBalanceExtras(idFamily)
   const [selectedUser, setSelectedUser] = useState(idUser)
+  const [recurring, setRecurring] = useState<RecurringExpense[]>([])
+  const [pendingRecurring, setPendingRecurring] = useState<PendingRecurring[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    getRecurringExpenses(supabase, idFamily).then((rules) => {
+      if (!cancelled) setRecurring(rules.filter((rule) => rule.is_active))
+    })
+    // Pendientes que han creado las reglas y aún no se han completado (los tuyos; los de otra persona no los ves)
+    supabase
+      .from('pml_pending_transaction')
+      .select('id_recurring_expense, ft_amount, dt_date')
+      .eq('id_family', idFamily)
+      .not('id_recurring_expense', 'is', null)
+      .then(({ data: rows, error: pendingError }) => {
+        if (cancelled || pendingError) return
+        setPendingRecurring(
+          (rows || []).map((row) => ({ idRecurring: row.id_recurring_expense as string, amount: Number(row.ft_amount), date: row.dt_date }))
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [idFamily])
 
   if (loading && !data) {
     return (
@@ -765,6 +799,8 @@ export default function HomeBudgetOverview({ idFamily, idUser }: { idFamily: str
             name={nameOf(selectedMember)}
             data={data}
             balanceExtras={balanceExtras}
+            recurring={recurring}
+            pendingRecurring={pendingRecurring}
           />
         )}
       </div>

@@ -50,7 +50,19 @@ interface TransactionFormProps {
   onSuccess?: () => void
   onCancel?: () => void
   /** Valores con los que arranca el formulario (p. ej. un gasto pendiente del móvil) */
-  initialValues?: { amount: number; date: string; comments?: string | null; place?: PlaceValue | null }
+  initialValues?: {
+    amount: number
+    date: string
+    comments?: string | null
+    place?: PlaceValue | null
+    /** Gasto recurrente del que viene (se guarda en la transacción) y datos con los que se rellena el formulario */
+    recurringId?: string | null
+    categoryId?: string | null
+    subcategoryId?: string | null
+    budgetTypeId?: string | null
+    budgetSubtypeId?: string | null
+    userIds?: string[]
+  }
   /** Se llama justo después de crear la transacción (también con "Guardar y nueva") */
   onCreated?: () => void
 }
@@ -111,10 +123,20 @@ export default function TransactionForm({
       dt_date: initialValues.date,
       ds_month_declared: `${month}-${year}`,
       ds_comments: initialValues.comments ?? null,
+      ...(initialValues.categoryId ? { id_category: initialValues.categoryId, id_subcategory: initialValues.subcategoryId ?? null } : {}),
+      ...(initialValues.budgetTypeId ? { id_budget_type: initialValues.budgetTypeId, id_budget_subtype: initialValues.budgetSubtypeId ?? null } : {}),
     }))
     setAmountInputValue(String(initialValues.amount))
     setPlace(initialValues.place ?? null)
-  }, [initialValues?.amount, initialValues?.date, initialValues?.comments, initialValues?.place?.latitude, initialValues?.place?.longitude]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialValues?.amount, initialValues?.date, initialValues?.comments, initialValues?.place?.latitude, initialValues?.place?.longitude, initialValues?.recurringId, initialValues?.categoryId, initialValues?.budgetTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Personas afectadas que vienen de un gasto recurrente (se aplican cuando ya se han cargado los miembros de la familia)
+  useEffect(() => {
+    const ids = initialValues?.userIds
+    if (!ids || ids.length === 0 || familyMembers.length === 0) return
+    const valid = ids.filter((id) => familyMembers.some((member) => member.id_user === id))
+    if (valid.length > 0) setFormData((prev) => ({ ...prev, selectedUsers: valid }))
+  }, [familyMembers, initialValues?.recurringId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cargar tipo de transacción, categorías, tags y miembros de la familia al montar
   useEffect(() => {
@@ -287,6 +309,7 @@ export default function TransactionForm({
           id_budget_type: transactionType === 'Expense' ? formData.id_budget_type : null,
           // Lugar (solo se envía si hay: así funciona también antes de ejecutar la migración)
           ...(place ? placeToTransactionFields(place) : {}),
+          ...(initialValues?.recurringId ? { id_recurring_expense: initialValues.recurringId } : {}),
           // Solo se envía si hay subpartida: así funciona también antes de ejecutar la migración
           ...(transactionType === 'Expense' && formData.id_budget_subtype
             ? { id_budget_subtype: formData.id_budget_subtype }

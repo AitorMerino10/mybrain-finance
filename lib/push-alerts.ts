@@ -1,5 +1,7 @@
 import { formatCurrency } from '@/lib/format'
 import { sendPushToUser, type AdminClient, type PushPayload } from '@/lib/push'
+import { projectMonth } from '@/lib/forecast-math'
+import { upcomingOccurrences, type RecurringExpense } from '@/lib/recurring'
 
 const TIME_ZONE = 'Europe/Madrid'
 const DEFAULT_WARN_PERCENT = 80
@@ -8,11 +10,17 @@ const DEFAULT_WARN_PERCENT = 80
 export const DAILY_REMINDER_HOUR = 23
 /** Hora (Madrid) a partir de la cual sale, el día 1, el aviso de cerrar el mes */
 export const MONTH_CLOSE_HOUR = 9
+/** Hora (Madrid) a la que sale el aviso de gastos pendientes sin completar */
+export const PENDING_REMINDER_HOUR = 20
+/** Día del mes desde el que se avisa de la previsión de fin de mes (antes hay poco gasto para extrapolar) */
+const FORECAST_FROM_DAY = 7
 
 type Alert = PushPayload & { idUser: string; key: string }
 
 type Prefs = {
   dailyReminder: boolean
+  pending: boolean
+  forecast: boolean
   budget: boolean
   goals: boolean
   warnPercent: number
@@ -26,11 +34,12 @@ type ShareRow = {
   idSubcategory: string | null
   idCategory: string | null
   amount: number
+  idRecurring: string | null
 }
 
 // ---------------- fechas (siempre en hora de Madrid) ----------------
 
-function nowInMadrid(): { today: string; hour: number } {
+export function nowInMadrid(): { today: string; hour: number } {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: TIME_ZONE,
     year: 'numeric',
@@ -47,6 +56,15 @@ function addMonthsTo(month: string, delta: number): string {
   const [year, m] = month.split('-').map(Number)
   const date = new Date(Date.UTC(year, m - 1 + delta, 1))
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+function dayOfMonth(date: string): number {
+  return Number(date.slice(8, 10))
+}
+
+function daysInMonthOf(month: string): number {
+  const [year, m] = month.split('-').map(Number)
+  return new Date(Date.UTC(year, m, 0)).getUTCDate()
 }
 
 function monthsBetween(startMonth: string, endMonthExclusive: string): number {
@@ -69,7 +87,7 @@ export type AlertScope = {
   /** Avisos programados (recordatorio diario y cierre de mes) en vez de los de "al momento" */
   scheduled?: boolean
   /** Para pruebas: salta la comprobación de hora/día y de avisos ya enviados */
-  force?: 'daily' | 'close'
+  force?: 'daily' | 'close' | 'pending'
 }
 
 async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[]> {
@@ -79,8 +97,9 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
 
   const sendDaily = scope.scheduled && (scope.force === 'daily' || hour === DAILY_REMINDER_HOUR)
   const sendClose = scope.scheduled && (scope.force === 'close' || (today.slice(8, 10) === '01' && hour >= MONTH_CLOSE_HOUR))
+  const sendPending = scope.scheduled && (scope.force === 'pending' || hour === PENDING_REMINDER_HOUR)
   // Tarea programada fuera de hora: no hay nada que enviar
-  if (scope.scheduled && !sendDaily && !sendClose) return []
+  if (scope.scheduled && !sendDaily && !sendClose && !sendPending) return []
 
   const { data: members } = await admin.from('pml_rel_user_family').select('id_user').eq('id_family', scope.idFamily)
   const memberIds = (members || []).map((member) => member.id_user)
@@ -94,10 +113,14 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
 
   const { data: prefRows } = await admin.from('pml_cfg_notification_pref').select('*').in('id_user', userIds)
   const prefs = new Map<string, Prefs>()
-  userIds.forEach((id) => prefs.set(id, { dailyReminder: true, budget: true, goals: true, warnPercent: DEFAULT_WARN_PERCENT, close: true }))
+  userIds.forEach((id) =>
+    prefs.set(id, { dailyReminder: true, pending: true, forecast: true, budget: true, goals: true, warnPercent: DEFAULT_WARN_PERCENT, close: true })
+  )
   ;(prefRows || []).forEach((row) =>
     prefs.set(row.id_user, {
       dailyReminder: row.is_daily_reminder ?? true,
+      pending: row.is_pending_alerts ?? true,
+      forecast: row.is_forecast_alerts ?? true,
       budget: row.is_budget_alerts,
       goals: row.is_goal_alerts ?? true,
       warnPercent: row.nu_warn_percent,
@@ -155,14 +178,14 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
   }
 
   // Gastos desde el mes más antiguo que haga falta (como mínimo, el mes anterior al actual)
-  const earliestGoal = goals.reduce<string>((min, goal) => (goal.dt_start_month.slice(0, 7) < min ? goal.dt_start_month.slice(0, 7) : min), addMonthsTo(nowMonth, -1))
+  const earliestGoal = goals.reduce<string>((min, goal) => (goal.dt_start_month.slice(0, 7) < min ? goal.dt_start_month.slice(0, 7) : min), addMonthsTo(nowMonth, -3))
   const shares = new Map<string, ShareRow[]>()
   if (scope.scheduled ? sendDaily || sendClose : true) {
     for (let from = 0; ; from += 1000) {
       const { data, error } = await admin
         .from('gnp_fct_transactions')
         .select(
-          'id_budget_type, id_subcategory, id_category, ds_month_declared, dt_date, pml_dim_transaction_type(ds_type), pml_rel_transaction_user(id_user, ft_amount_user)'
+          'id_budget_type, id_subcategory, id_category, ds_month_declared, dt_date, id_recurring_expense, pml_dim_transaction_type(ds_type), pml_rel_transaction_user(id_user, ft_amount_user)'
         )
         .eq('id_family', scope.idFamily)
         .gte('ds_month_declared', earliestGoal)
@@ -184,6 +207,7 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
             idSubcategory: row.id_subcategory,
             idCategory: row.id_category,
             amount: Number(rel.ft_amount_user) || 0,
+            idRecurring: row.id_recurring_expense ?? null,
           })
           shares.set(rel.id_user, list)
         })
@@ -214,11 +238,81 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
     return { budget, spent }
   }
 
-  // Gastos pendientes de completar (para recordarlos en el aviso diario)
-  const pendingCount = new Map<string, number>()
-  if (sendDaily) {
-    const { data: pendingRows } = await admin.from('pml_pending_transaction').select('id_user').eq('id_family', scope.idFamily)
-    ;(pendingRows || []).forEach((row) => pendingCount.set(row.id_user, (pendingCount.get(row.id_user) || 0) + 1))
+  /** Previsión de cierre del mes de una persona (mismas partidas que monthTotals) con el ritmo del gasto variable. */
+  const forecastForUser = (idUser: string, budget: number, spent: number) => {
+    if (budget <= 0) return null
+    const covered = new Set(
+      versions
+        .filter((version) => version.id_user === idUser && version.dt_start_month.slice(0, 7) <= nowMonth && (!version.dt_end_month || version.dt_end_month.slice(0, 7) > nowMonth))
+        .map((version) => version.id_budget_type)
+    )
+    const inCovered = (row: ShareRow) => {
+      const type = row.idBudgetType || (row.idSubcategory ? defaults.get(row.idSubcategory) : null)
+      return Boolean(type && covered.has(type))
+    }
+    const rows = (shares.get(idUser) || []).filter(inCovered)
+    const fixedSpentToDate = rows.filter((row) => row.month === nowMonth && row.idRecurring).reduce((sum, row) => sum + row.amount, 0)
+
+    // Ritmo del gasto variable de los 3 meses anteriores (solo meses con gasto)
+    const history = new Map<string, number>()
+    rows.forEach((row) => {
+      if (row.month < addMonthsTo(nowMonth, -3) || row.month >= nowMonth || row.idRecurring) return
+      history.set(row.month, (history.get(row.month) || 0) + row.amount)
+    })
+    const historyMonths = Array.from(history.keys()).filter((month) => (history.get(month) || 0) > 0)
+    const historyDailyRate =
+      historyMonths.length > 0
+        ? historyMonths.reduce((sum, month) => sum + (history.get(month) || 0), 0) / historyMonths.reduce((sum, month) => sum + daysInMonthOf(month), 0)
+        : null
+
+    // Recurrentes que faltan este mes
+    const monthEnd = `${nowMonth}-${String(daysInMonthOf(nowMonth)).padStart(2, '0')}`
+    let upcomingFixed = pendingRecurring.get(idUser) || 0
+    recurringRules.forEach((rule) => {
+      const owners = rule.ds_user_ids.length > 0 ? rule.ds_user_ids : rule.id_user_creator ? [rule.id_user_creator] : []
+      if (!owners.includes(idUser)) return
+      const type = rule.id_budget_type || (rule.id_subcategory ? defaults.get(rule.id_subcategory) : null)
+      if (!type || !covered.has(type)) return
+      upcomingFixed += (Number(rule.ft_amount) / owners.length) * upcomingOccurrences(rule, monthEnd).length
+    })
+
+    const { projected } = projectMonth({
+      daysInMonth: daysInMonthOf(nowMonth),
+      dayOfMonth: dayOfMonth(today),
+      spentToDate: spent,
+      fixedSpentToDate,
+      upcomingFixed,
+      historyDailyRate,
+    })
+    return { projected, upcomingFixed }
+  }
+
+  // Gastos pendientes de completar (aviso de pendientes olvidados)
+  const pendingByUser = new Map<string, Array<{ amount: number; date: string }>>()
+  if (sendPending) {
+    const { data: pendingRows } = await admin.from('pml_pending_transaction').select('id_user, ft_amount, dt_date').eq('id_family', scope.idFamily)
+    ;(pendingRows || []).forEach((row) =>
+      pendingByUser.set(row.id_user, [...(pendingByUser.get(row.id_user) || []), { amount: Number(row.ft_amount), date: row.dt_date }])
+    )
+  }
+
+  // Previsión de fin de mes: reglas recurrentes y pendientes recurrentes sin completar
+  const forecastNeeded = !scope.scheduled && dayOfMonth(today) >= FORECAST_FROM_DAY
+  let recurringRules: RecurringExpense[] = []
+  const pendingRecurring = new Map<string, number>()
+  if (forecastNeeded) {
+    const [{ data: ruleRows }, { data: pendingRecurringRows }] = await Promise.all([
+      admin.from('pml_cfg_recurring_expense').select('*').eq('id_family', scope.idFamily).eq('is_active', true),
+      admin
+        .from('pml_pending_transaction')
+        .select('id_user, ft_amount, dt_date')
+        .eq('id_family', scope.idFamily)
+        .not('id_recurring_expense', 'is', null),
+    ])
+    recurringRules = ruleRows || []
+    ;(pendingRecurringRows || []).forEach((row) => {
+      if (row.dt_date.slice(0, 7) === nowMonth) pendingRecurring.set(row.id_user, (pendingRecurring.get(row.id_user) || 0) + Number(row.ft_amount))
+    })
   }
 
   const alerts: Alert[] = []
@@ -245,6 +339,29 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
                   : `Llevas ${formatCurrency(spent)} de ${formatCurrency(budget)} este mes; te quedan ${formatCurrency(budget - spent)}.`,
               url: familyUrl,
               tag: 'budget-monthly',
+            })
+          }
+        }
+      }
+
+      // 2b) Previsión de fin de mes: a este ritmo te pasarías del presupuesto
+      if (pref.forecast && forecastNeeded) {
+        const { budget, spent } = monthTotals(idUser, nowMonth)
+        if (budget > 0 && spent < budget) {
+          const forecast = forecastForUser(idUser, budget, spent)
+          if (forecast && forecast.projected > budget * 1.03) {
+            const monthName = monthLabel(nowMonth)
+            const daysLeft = daysInMonthOf(nowMonth) - dayOfMonth(today)
+            const allowance = daysLeft > 0 ? (budget - spent - forecast.upcomingFixed) / daysLeft : 0
+            alerts.push({
+              idUser,
+              key: `forecast:${nowMonth}`,
+              title: 'A este ritmo te pasarás del presupuesto',
+              body:
+                `Cerrarías ${monthName} en unos ${formatCurrency(forecast.projected)} (presupuesto: ${formatCurrency(budget)}).` +
+                (allowance > 0 ? ` Para no pasarte, gasta unos ${formatCurrency(allowance)} al día.` : ''),
+              url: familyUrl,
+              tag: 'budget-forecast',
             })
           }
         }
@@ -284,13 +401,31 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
       continue
     }
 
+    // 0) Gastos pendientes sin completar
+    if (sendPending && pref.pending) {
+      const mine = pendingByUser.get(idUser) || []
+      if (mine.length > 0) {
+        const total = mine.reduce((sum, item) => sum + item.amount, 0)
+        const oldest = mine.reduce((min, item) => (item.date < min ? item.date : min), mine[0].date)
+        const ageDays = Math.max(0, Math.round((Date.parse(today) - Date.parse(oldest)) / 86400000))
+        alerts.push({
+          idUser,
+          key: `pending:${today}`,
+          title: mine.length === 1 ? 'Tienes 1 gasto pendiente de completar' : `Tienes ${mine.length} gastos pendientes de completar`,
+          body:
+            `${formatCurrency(total)} sin asignar a ninguna partida.` +
+            (ageDays >= 1 ? ` El más antiguo es de hace ${ageDays} ${ageDays === 1 ? 'día' : 'días'}.` : '') +
+            ' Complétalos para que cuenten en tus números.',
+          url: familyUrl,
+          tag: 'pending-reminder',
+        })
+      }
+    }
+
     // 1) Recordatorio diario para meter los gastos del día
     if (sendDaily && pref.dailyReminder) {
       const todays = userShares.filter((row) => row.date === today)
       const total = todays.reduce((sum, row) => sum + row.amount, 0)
-      const pendingNote = pendingCount.get(idUser)
-        ? ` Tienes ${pendingCount.get(idUser)} ${pendingCount.get(idUser) === 1 ? 'gasto pendiente' : 'gastos pendientes'} de completar.`
-        : ''
       alerts.push({
         idUser,
         key: `daily:${today}`,
@@ -298,7 +433,7 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
         body:
           (todays.length > 0
             ? `Hoy llevas ${todays.length} ${todays.length === 1 ? 'gasto' : 'gastos'} (${formatCurrency(total)}). ¿Se te ha olvidado alguno?`
-            : 'Hoy no has registrado ningún gasto. Añádelos antes de acostarte para que las cuentas cuadren.') + pendingNote,
+            : 'Hoy no has registrado ningún gasto. Añádelos antes de acostarte para que las cuentas cuadren.'),
         url: `/?family=${scope.idFamily}&action=new-transaction`,
         tag: 'daily-reminder',
       })

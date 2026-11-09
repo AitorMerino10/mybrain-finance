@@ -361,6 +361,7 @@ export type Database = {
           id_budget_subtype: string | null
           id_category: string | null
           id_family: string | null
+          id_recurring_expense: string | null
           id_subcategory: string | null
           id_transaction: string
           id_type: string | null
@@ -383,6 +384,7 @@ export type Database = {
           id_budget_subtype?: string | null
           id_category?: string | null
           id_family?: string | null
+          id_recurring_expense?: string | null
           id_subcategory?: string | null
           id_transaction?: string
           id_type?: string | null
@@ -405,6 +407,7 @@ export type Database = {
           id_budget_subtype?: string | null
           id_category?: string | null
           id_family?: string | null
+          id_recurring_expense?: string | null
           id_subcategory?: string | null
           id_transaction?: string
           id_type?: string | null
@@ -455,6 +458,72 @@ export type Database = {
           },
         ]
       }
+      pml_cfg_recurring_expense: {
+        Row: {
+          ds_comments: string | null
+          ds_name: string
+          ds_user_ids: string[]
+          dt_created: string
+          dt_end: string | null
+          dt_last_generated: string | null
+          dt_next: string
+          dt_start: string
+          ft_amount: number
+          id_budget_subtype: string | null
+          id_budget_type: string | null
+          id_category: string | null
+          id_family: string
+          id_recurring_expense: string
+          id_subcategory: string | null
+          id_user_creator: string | null
+          is_active: boolean
+          nu_day_of_month: number
+          nu_every_months: number
+        }
+        Insert: {
+          ds_comments?: string | null
+          ds_name: string
+          ds_user_ids?: string[]
+          dt_created?: string
+          dt_end?: string | null
+          dt_last_generated?: string | null
+          dt_next: string
+          dt_start: string
+          ft_amount: number
+          id_budget_subtype?: string | null
+          id_budget_type?: string | null
+          id_category?: string | null
+          id_family: string
+          id_recurring_expense?: string
+          id_subcategory?: string | null
+          id_user_creator?: string | null
+          is_active?: boolean
+          nu_day_of_month?: number
+          nu_every_months?: number
+        }
+        Update: {
+          ds_comments?: string | null
+          ds_name?: string
+          ds_user_ids?: string[]
+          dt_created?: string
+          dt_end?: string | null
+          dt_last_generated?: string | null
+          dt_next?: string
+          dt_start?: string
+          ft_amount?: number
+          id_budget_subtype?: string | null
+          id_budget_type?: string | null
+          id_category?: string | null
+          id_family?: string
+          id_recurring_expense?: string
+          id_subcategory?: string | null
+          id_user_creator?: string | null
+          is_active?: boolean
+          nu_day_of_month?: number
+          nu_every_months?: number
+        }
+        Relationships: []
+      }
       pml_pending_transaction: {
         Row: {
           dt_created: string
@@ -467,6 +536,7 @@ export type Database = {
           ft_longitude: number | null
           id_family: string
           id_pending_transaction: string
+          id_recurring_expense: string | null
           id_user: string
         }
         Insert: {
@@ -480,6 +550,7 @@ export type Database = {
           ft_longitude?: number | null
           id_family: string
           id_pending_transaction?: string
+          id_recurring_expense?: string | null
           id_user: string
         }
         Update: {
@@ -493,6 +564,7 @@ export type Database = {
           ft_longitude?: number | null
           id_family?: string
           id_pending_transaction?: string
+          id_recurring_expense?: string | null
           id_user?: string
         }
         Relationships: []
@@ -562,6 +634,9 @@ export type Database = {
           is_daily_reminder: boolean | null
           is_goal_alerts: boolean | null
           is_close_alerts: boolean
+          is_pending_alerts: boolean
+          is_forecast_alerts: boolean
+          is_recurring_alerts: boolean
           is_unassigned_alerts: boolean
           nu_warn_percent: number
         }
@@ -572,6 +647,9 @@ export type Database = {
           is_daily_reminder?: boolean | null
           is_goal_alerts?: boolean | null
           is_close_alerts?: boolean
+          is_pending_alerts?: boolean
+          is_forecast_alerts?: boolean
+          is_recurring_alerts?: boolean
           is_unassigned_alerts?: boolean
           nu_warn_percent?: number
         }
@@ -582,6 +660,9 @@ export type Database = {
           is_daily_reminder?: boolean | null
           is_goal_alerts?: boolean | null
           is_close_alerts?: boolean
+          is_pending_alerts?: boolean
+          is_forecast_alerts?: boolean
+          is_recurring_alerts?: boolean
           is_unassigned_alerts?: boolean
           nu_warn_percent?: number
         }

@@ -11,6 +11,7 @@ import { formatCurrency, formatDate } from '@/lib/format'
 import LocalModeBanner from './LocalModeBanner'
 import { googleMapsUrl, type PlaceValue } from '@/lib/places'
 import { deletePendingTransaction, getPendingTransactions, type PendingTransaction } from '@/lib/pending'
+import { getRecurringExpenses, type RecurringExpense } from '@/lib/recurring'
 
 interface HomePageClientProps {
   idFamily: string
@@ -53,6 +54,7 @@ export default function HomePageClient({
   const [selectedTransactionType, setSelectedTransactionType] = useState<TransactionTypeName>('Expense')
   const [pending, setPending] = useState<PendingTransaction[]>([])
   const [activePending, setActivePending] = useState<PendingTransaction | null>(null)
+  const [recurringRules, setRecurringRules] = useState<Record<string, RecurringExpense>>({})
 
   const closeForm = () => {
     setShowTransactionForm(false)
@@ -114,6 +116,18 @@ export default function HomePageClient({
       cancelled = true
     }
   }, [idFamily, idUser, openPendingId])
+
+  // Reglas de los pendientes recurrentes: dan los datos con los que se rellena el formulario
+  useEffect(() => {
+    if (!pending.some((item) => item.id_recurring_expense)) return
+    let cancelled = false
+    getRecurringExpenses(supabase, idFamily).then((rules) => {
+      if (!cancelled) setRecurringRules(Object.fromEntries(rules.map((rule) => [rule.id_recurring_expense, rule])))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [pending, idFamily])
 
   // Sincronizar con prop
   useEffect(() => {
@@ -302,6 +316,16 @@ export default function HomePageClient({
                     date: activePending.dt_date,
                     comments: activePending.ds_merchant,
                     place: pendingPlace(activePending),
+                    ...(activePending.id_recurring_expense
+                      ? {
+                          recurringId: activePending.id_recurring_expense,
+                          categoryId: recurringRules[activePending.id_recurring_expense]?.id_category ?? null,
+                          subcategoryId: recurringRules[activePending.id_recurring_expense]?.id_subcategory ?? null,
+                          budgetTypeId: recurringRules[activePending.id_recurring_expense]?.id_budget_type ?? null,
+                          budgetSubtypeId: recurringRules[activePending.id_recurring_expense]?.id_budget_subtype ?? null,
+                          userIds: recurringRules[activePending.id_recurring_expense]?.ds_user_ids ?? [],
+                        }
+                      : {}),
                   }
                 : undefined
             }
@@ -351,7 +375,14 @@ export default function HomePageClient({
             {pending.map((item) => (
               <li key={item.id_pending_transaction} className="flex items-center gap-3 px-3 py-2.5">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-gray-900">{item.ds_merchant || 'Gasto sin nombre'}</p>
+                  <p className="truncate text-sm font-semibold text-gray-900">
+                    {item.id_recurring_expense && (
+                      <span className="mr-1.5 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700" title="Gasto recurrente">
+                        🔁 Recurrente
+                      </span>
+                    )}
+                    {item.ds_merchant || 'Gasto sin nombre'}
+                  </p>
                   <p className="text-xs text-gray-500">
                     {formatCurrency(item.ft_amount)} · {new Date(`${item.dt_date}T00:00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
                     {item.ds_card ? ` · ${item.ds_card}` : ''}

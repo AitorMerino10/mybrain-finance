@@ -5,7 +5,7 @@ import { associateTagToTransaction } from './tags'
 import type { TransactionInsert, TransactionUpdate } from '@/types/transactions'
 
 type Transaction = Database['public']['Tables']['gnp_fct_transactions']['Row']
-function splitAmountForUsers(totalAmount: number, userIds: string[]) {
+export function splitAmountForUsers(totalAmount: number, userIds: string[]) {
   const numUsers = userIds.length
   const baseAmountPerUser = Math.floor((totalAmount / numUsers) * 100) / 100
   const amounts: number[] = []

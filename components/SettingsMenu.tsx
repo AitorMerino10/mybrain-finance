@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-export type SettingsSection = 'verticales' | 'notificaciones' | 'pagos'
+export type SettingsSection = 'verticales' | 'notificaciones' | 'pagos' | 'recurrentes'
 
 type MenuItem = { key: string; label: string; emoji: string; href: string }
 
@@ -19,6 +19,7 @@ export default function SettingsMenu({
     { key: 'verticales', label: 'Verticales', emoji: '🗂️', href: `/settings?${family}&section=verticales` },
     { key: 'notificaciones', label: 'Notificaciones', emoji: '🔔', href: `/settings?${family}&section=notificaciones` },
     { key: 'pagos', label: 'Pagos con el móvil', emoji: '📲', href: `/settings?${family}&section=pagos` },
+    { key: 'recurrentes', label: 'Recurrentes', emoji: '🔁', href: `/settings?${family}&section=recurrentes` },
     { key: 'presupuestos', label: 'Presupuestos', emoji: '📖', href: `/budgets?${family}` },
     { key: 'ayuda', label: 'Ayuda', emoji: '❓', href: `/help?${family}` },
     ...(showAdmin ? [{ key: 'admin', label: 'Admin', emoji: '👑', href: `/admin?${family}` }] : []),

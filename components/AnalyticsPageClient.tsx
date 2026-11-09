@@ -682,6 +682,13 @@ export default function AnalyticsPageClient({
             </p>
           </div>
           </div>
+          <div className="flex items-center gap-2">
+          <Link
+            href={`/places?family=${idFamily}`}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 touch-manipulation"
+          >
+            📍 Mapa de gastos
+          </Link>
           {/* Botón volver en desktop */}
           <Link
             href="/"
@@ -693,6 +700,7 @@ export default function AnalyticsPageClient({
             </svg>
             Volver
           </Link>
+          </div>
         </div>
 
         {/* KPIs Globales */}

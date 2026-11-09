@@ -24,6 +24,13 @@ export type CalcTransaction = {
   id_budget_type: string | null
   ft_amount: number
   users: CalcUserShare[]
+  /** Regla de gasto recurrente que creó esta transacción (null si se metió a mano) */
+  id_recurring_expense?: string | null
+  /** Lugar del gasto (si se guardó) */
+  ft_latitude?: number | null
+  ft_longitude?: number | null
+  ds_place_name?: string | null
+  ds_place_id?: string | null
 }
 
 export type PeriodRow = {
@@ -207,6 +214,11 @@ function mapRow(row: any): CalcTransaction {
     type: row.transactionType ?? null,
     id_budget_type: row.id_budget_type ?? null,
     ft_amount: row.ft_amount ?? 0,
+    id_recurring_expense: row.id_recurring_expense ?? null,
+    ft_latitude: row.ft_latitude != null ? Number(row.ft_latitude) : null,
+    ft_longitude: row.ft_longitude != null ? Number(row.ft_longitude) : null,
+    ds_place_name: row.ds_place_name ?? null,
+    ds_place_id: row.ds_place_id ?? null,
     users: (row.users || []).map((user: any) => ({
       id_user: user.id_user,
       ds_user: user.ds_user ?? null,

@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-type Prefs = { dailyReminder: boolean; budgetAlerts: boolean; goalAlerts: boolean; warnPercent: number; closeAlerts: boolean }
+type Prefs = {
+  dailyReminder: boolean
+  budgetAlerts: boolean
+  goalAlerts: boolean
+  warnPercent: number
+  closeAlerts: boolean
+  pendingAlerts: boolean
+  forecastAlerts: boolean
+  recurringAlerts: boolean
+}
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
@@ -213,6 +222,24 @@ export default function NotificationsSettings() {
             checked={prefs.dailyReminder}
             onChange={(value) => updatePrefs({ dailyReminder: value })}
             hint="Todos los días a las 23:00, para que metas los gastos de hoy."
+          />
+          <Toggle
+            label="Gastos pendientes sin completar"
+            checked={prefs.pendingAlerts}
+            onChange={(value) => updatePrefs({ pendingAlerts: value })}
+            hint="Todos los días a las 20:00, solo si tienes gastos pendientes (pagos con el móvil o recurrentes) sin completar."
+          />
+          <Toggle
+            label="Cobros recurrentes"
+            checked={prefs.recurringAlerts}
+            onChange={(value) => updatePrefs({ recurringAlerts: value })}
+            hint="El día que toca un gasto recurrente (suscripción, alquiler…) se crea como pendiente y te avisamos para que lo completes."
+          />
+          <Toggle
+            label="Previsión de fin de mes"
+            checked={prefs.forecastAlerts}
+            onChange={(value) => updatePrefs({ forecastAlerts: value })}
+            hint="Si a este ritmo vas a pasarte del presupuesto del mes (una vez al mes, a partir del día 7)."
           />
           <Toggle
             label="Presupuesto mensual al límite"

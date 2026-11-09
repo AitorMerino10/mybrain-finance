@@ -1,5 +1,5 @@
-# Lanza cada hora la tarea de notificaciones programadas (recordatorio diario a las 23:00 y
-# cierre de mes el día 1). La propia API decide, según la hora de Madrid, si toca enviar algo.
+# Lanza cada hora la tarea programada: crea los pendientes de los gastos recurrentes (desde las 8:00),
+# avisa de pendientes sin completar (20:00), recordatorio diario (23:00) y cierre de mes (día 1). La propia API decide, según la hora de Madrid, si toca enviar algo.
 # Secrets del repositorio necesarios: APP_URL (https://tu-dominio) y CRON_SECRET.
 name: Notificaciones programadas
 
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: 'Forzar un aviso ahora (prueba): daily o close. Vacío = comportamiento normal'
+        description: 'Forzar un aviso ahora (prueba): daily, close o pending. Vacío = comportamiento normal'
         required: false
         default: ''
 

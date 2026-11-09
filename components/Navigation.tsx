@@ -18,6 +18,7 @@ const SIDEBAR_EMOJIS: Record<string, string> = {
   plus: '➕',
   chart: '📊',
   budget: '📖',
+  places: '📍',
   settings: '⚙️',
 }
 
@@ -55,6 +56,7 @@ export default function Navigation({
     { name: 'Nueva Transacción', href: '/', icon: 'plus', isNewTransaction: true },
     { name: 'Analítica', href: '/analytics', icon: 'chart' },
     { name: 'Presupuestos', href: '/budgets', icon: 'budget' },
+    { name: 'Mapa de gastos', href: '/places', icon: 'places' },
     { name: 'Configuración', href: '/settings', icon: 'settings' },
   ]
 
