@@ -43,7 +43,7 @@ export default async function HelpPage({
         showMyBrainLink={isMyBrainFamilyAllowed(selectedFamilyId)}
       />
 
-      <main className="lg:pl-72">
+      <main className="app-main">
         <div className="pt-4 sm:pt-6 pb-20 lg:pb-8 lg:pt-12 bg-gray-50 min-h-screen">
           <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 space-y-6">
             <div className="mb-4 sm:mb-6 flex items-center gap-3">

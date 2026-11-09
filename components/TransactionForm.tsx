@@ -17,11 +17,14 @@ import {
   getBudgetSubtypes,
   getBudgetTypes,
   getSubcategoryBudgetDefaults,
+  getUserBudgetHistory,
+  type CurrentUserBudget,
   type BudgetSubtype,
   type BudgetType,
   type SubcategoryBudgetDefault,
 } from '@/lib/budgets'
-import { getTodayISOString, getCurrentMonthYear } from '@/lib/date-utils'
+import { getTodayISOString, getCurrentMonthYear, convertMonthYearToDBFormat } from '@/lib/date-utils'
+import { incomeHasNoDefaultBudget, usersHaveBudgets } from '@/lib/transaction-budget-rules'
 import { validateTransactionForm } from '@/types/transactions'
 import { trackTestTransaction } from '@/lib/test-records'
 import type {
@@ -70,6 +73,8 @@ export default function TransactionForm({
   const [tags, setTags] = useState<Tag[]>([])
   const [budgetTypes, setBudgetTypes] = useState<BudgetType[]>([])
   const [budgetSubtypes, setBudgetSubtypes] = useState<BudgetSubtype[]>([])
+  // Presupuestos creados: si la persona aún no tiene ninguno, no se exige asociarlos
+  const [budgetVersions, setBudgetVersions] = useState<CurrentUserBudget[]>([])
   // Reparto personalizado del ingreso entre partidas (null = por defecto, no se guarda nada)
   const [incomeAllocation, setIncomeAllocation] = useState<AllocationRow[] | null>(null)
   const [budgetDefaults, setBudgetDefaults] = useState<SubcategoryBudgetDefault[]>([])
@@ -115,11 +120,13 @@ export default function TransactionForm({
         const tagsData = await getTagsByFamily(supabase, idFamily)
         setTags(tagsData)
 
-        const [budgetTypesData, budgetDefaultsData] = await Promise.all([
+        const [budgetTypesData, budgetDefaultsData, versionsData] = await Promise.all([
           getBudgetTypes(supabase, idFamily),
           getSubcategoryBudgetDefaults(supabase, idFamily),
+          getUserBudgetHistory(supabase, idFamily),
         ])
         setBudgetTypes(budgetTypesData)
+        setBudgetVersions(versionsData)
         setBudgetSubtypes((await getBudgetSubtypes(supabase, idFamily)).subtypes)
         setBudgetDefaults(budgetDefaultsData)
 
@@ -201,12 +208,26 @@ export default function TransactionForm({
     const validationErrors = validateTransactionForm(formData, requireUsers)
     const usersToAssociate = getUsersToAssociate()
 
-    if (transactionType === 'Expense' && !formData.id_budget_type) {
+    // Toda transacción tiene que ir a un presupuesto, salvo que la persona aún no tenga ninguno creado
+    const needsBudget = usersHaveBudgets(budgetVersions, usersToAssociate)
+
+    if (transactionType === 'Expense' && needsBudget && !formData.id_budget_type) {
       validationErrors.id_budget_type = 'Selecciona una partida de presupuesto'
     }
 
     if (transactionType === 'Income' && !allocationIsValid(incomeAllocation, formData.ft_amount)) {
       validationErrors.incomeAllocation = 'El reparto entre partidas supera el importe del ingreso'
+    } else if (transactionType === 'Income' && needsBudget && incomeAllocation === null && formData.ds_month_declared) {
+      let month = ''
+      try {
+        month = convertMonthYearToDBFormat(formData.ds_month_declared)
+      } catch {
+        month = ''
+      }
+      if (month && incomeHasNoDefaultBudget({ amount: Math.max(formData.ft_amount, 0.01), userIds: usersToAssociate, month, versions: budgetVersions, budgetTypes })) {
+        validationErrors.incomeAllocation =
+          'Ese mes no hay presupuesto vigente: desglosa el ingreso entre partidas o márcalo como ahorro'
+      }
     }
 
     if (Object.keys(validationErrors).length > 0) {

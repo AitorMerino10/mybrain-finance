@@ -23,3 +23,60 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Menú lateral minimizable (el estado vive en <html data-sidebar="collapsed">) */
+@media (min-width: 1024px) {
+  .app-sidebar {
+    width: 18rem;
+    transition: width 0.2s ease;
+  }
+  .app-main {
+    padding-left: 18rem;
+    transition: padding-left 0.2s ease;
+  }
+  html[data-sidebar='collapsed'] .app-sidebar {
+    width: 4.5rem;
+  }
+  html[data-sidebar='collapsed'] .app-main {
+    padding-left: 4.5rem;
+  }
+}
+.sidebar-pad {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+html[data-sidebar='collapsed'] .sidebar-pad {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+html[data-sidebar='collapsed'] .sidebar-label {
+  display: none;
+}
+html:not([data-sidebar='collapsed']) .sidebar-mini {
+  display: none;
+}
+html[data-sidebar='collapsed'] .sidebar-item {
+  justify-content: center;
+  column-gap: 0;
+}
+html[data-sidebar='collapsed'] .sidebar-family {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+html[data-sidebar='collapsed'] .sidebar-family button {
+  justify-content: center;
+}
+html[data-sidebar='collapsed'] .sidebar-header {
+  justify-content: center;
+}
+html[data-sidebar='collapsed'] .sidebar-toggle {
+  width: 100%;
+}
+/* Los emoticonos del menú conservan sus colores: ni tinte ni transparencia */
+.sidebar-emoji,
+.sidebar-mini {
+  color: initial;
+  opacity: 1;
+  filter: none;
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+}

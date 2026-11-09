@@ -57,7 +57,7 @@ export default async function AnalyticsPage({
       />
       
       {/* Main Content */}
-      <main className="lg:pl-72">
+      <main className="app-main">
         <div className="pt-4 sm:pt-6 pb-20 lg:pb-8 lg:pt-12">
           <AnalyticsPageClient
             idFamily={selectedFamilyId}

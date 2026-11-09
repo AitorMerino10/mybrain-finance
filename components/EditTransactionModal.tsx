@@ -19,11 +19,14 @@ import {
   getBudgetSubtypes,
   getBudgetTypes,
   getSubcategoryBudgetDefaults,
+  getUserBudgetHistory,
+  type CurrentUserBudget,
   type BudgetSubtype,
   type BudgetType,
   type SubcategoryBudgetDefault,
 } from '@/lib/budgets'
-import { convertDBFormatToMonthYear } from '@/lib/date-utils'
+import { convertDBFormatToMonthYear, convertMonthYearToDBFormat } from '@/lib/date-utils'
+import { incomeHasNoDefaultBudget, usersHaveBudgets } from '@/lib/transaction-budget-rules'
 import { validateTransactionForm } from '@/types/transactions'
 import type {
   Category,
@@ -81,6 +84,8 @@ export default function EditTransactionModal({
   const [tags, setTags] = useState<Tag[]>(initialTags)
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>(initialFamilyMembers)
   const [budgetTypes, setBudgetTypes] = useState<BudgetType[]>([])
+  // Presupuestos creados: si la persona aún no tiene ninguno, no se exige asociarlos
+  const [budgetVersions, setBudgetVersions] = useState<CurrentUserBudget[]>([])
   const [budgetSubtypes, setBudgetSubtypes] = useState<BudgetSubtype[]>([])
   // Reparto personalizado del ingreso entre partidas (null = por defecto). `hadStoredAllocation`: ya había uno guardado
   const [incomeAllocation, setIncomeAllocation] = useState<AllocationRow[] | null>(null)
@@ -110,12 +115,14 @@ export default function EditTransactionModal({
           setSubcategories(subs)
         }
 
-        const [budgetTypesData, budgetDefaultsData] = await Promise.all([
+        const [budgetTypesData, budgetDefaultsData, versionsData] = await Promise.all([
           getBudgetTypes(supabase, idFamily),
           getSubcategoryBudgetDefaults(supabase, idFamily),
+          getUserBudgetHistory(supabase, idFamily),
         ])
 
         setBudgetTypes(budgetTypesData)
+        setBudgetVersions(versionsData)
         setBudgetSubtypes((await getBudgetSubtypes(supabase, idFamily, { includeArchived: true })).subtypes)
         setBudgetDefaults(budgetDefaultsData)
       } catch (err) {
@@ -168,11 +175,30 @@ export default function EditTransactionModal({
 
     const requireUsers = familyMembers.length > 1
     const validationErrors = validateTransactionForm(formData, requireUsers)
-    if (transactionType === 'Expense' && !formData.id_budget_type) {
+    // Toda transacción tiene que ir a un presupuesto, salvo que la persona aún no tenga ninguno creado
+    const usersToCheck =
+      formData.selectedUsers && formData.selectedUsers.length > 0
+        ? formData.selectedUsers
+        : familyMembers.length === 1
+          ? [familyMembers[0].id_user]
+          : []
+    const needsBudget = usersHaveBudgets(budgetVersions, usersToCheck)
+    if (transactionType === 'Expense' && needsBudget && !formData.id_budget_type) {
       validationErrors.id_budget_type = 'Selecciona una partida de presupuesto'
     }
     if (transactionType === 'Income' && !allocationIsValid(incomeAllocation, formData.ft_amount)) {
       validationErrors.incomeAllocation = 'El reparto entre partidas supera el importe del ingreso'
+    } else if (transactionType === 'Income' && needsBudget && incomeAllocation === null && formData.ds_month_declared) {
+      let month = ''
+      try {
+        month = convertMonthYearToDBFormat(formData.ds_month_declared)
+      } catch {
+        month = ''
+      }
+      if (month && incomeHasNoDefaultBudget({ amount: Math.max(formData.ft_amount, 0.01), userIds: usersToCheck, month, versions: budgetVersions, budgetTypes })) {
+        validationErrors.incomeAllocation =
+          'Ese mes no hay presupuesto vigente: desglosa el ingreso entre partidas o márcalo como ahorro'
+      }
     }
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)

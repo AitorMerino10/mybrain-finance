@@ -13,8 +13,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
       <body className="font-sans antialiased">
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{if(localStorage.getItem('mybrain:sidebar')==='collapsed')document.documentElement.dataset.sidebar='collapsed'}catch(e){}",
+          }}
+        />
         <SyncUserProfile />
         {children}
       </body>

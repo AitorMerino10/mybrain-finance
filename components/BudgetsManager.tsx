@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   getAllCategoriesByFamily,
@@ -37,9 +37,16 @@ import PartidasManager from './PartidasManager'
 interface BudgetsManagerProps {
   idFamily: string
   idUser?: string
+  /** Controles de gasto (se muestran en su pestaña) */
+  controlsSlot?: ReactNode
 }
 
-export default function BudgetsManager({ idFamily, idUser }: BudgetsManagerProps) {
+export default function BudgetsManager({ idFamily, idUser, controlsSlot }: BudgetsManagerProps) {
+  const [tab, setTab] = useState<'partidas' | 'defaults' | 'controles'>('partidas')
+  useEffect(() => {
+    // Los enlaces a #objetivos abren directamente la pestaña de controles
+    if (window.location.hash === '#objetivos') setTab('controles')
+  }, [])
   const [budgetTypes, setBudgetTypes] = useState<BudgetType[]>([])
   const [plans, setPlans] = useState<BudgetPlan[]>([])
   const [subtypes, setSubtypes] = useState<BudgetSubtype[]>([])
@@ -327,7 +334,7 @@ export default function BudgetsManager({ idFamily, idUser }: BudgetsManagerProps
   const closingMember = closingUser ? familyMembers.find((member) => member.id_user === closingUser) : null
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       {error && (
         <div className="rounded-xl bg-red-50 p-4 text-sm font-medium text-red-800">
           {error}
@@ -370,97 +377,98 @@ export default function BudgetsManager({ idFamily, idUser }: BudgetsManagerProps
         />
       )}
 
-      <PartidasManager idFamily={idFamily} onChanged={() => loadData(true)} />
+      <nav className="flex flex-wrap gap-1.5" aria-label="Configuración de presupuestos">
+        {(
+          [
+            ['partidas', '🗂️ Partidas'],
+            ['defaults', '🔗 Categorías <> Partidas'],
+            ...(controlsSlot ? ([['controles', '🎯 Controles de gasto']] as const) : []),
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setTab(value)}
+            className={`rounded-full border px-3 py-1 text-sm transition ${
+              tab === value ? 'border-[#0d9488] bg-[#90EBD6]/30 font-semibold text-gray-900' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
 
-      <section className="space-y-4 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">Defaults por subcategoría</h3>
-          <p className="text-sm text-gray-600">
-            Al crear un gasto, la subcategoría propondrá esta partida de presupuesto.
+      {tab === 'partidas' && <PartidasManager idFamily={idFamily} onChanged={() => loadData(true)} />}
+
+      {tab === 'defaults' && (
+        <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <p className="border-b border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-500">
+            Partida que se propone por defecto al crear un gasto de cada vertical o subvertical. Al registrar el gasto puedes elegir otra.
           </p>
-        </div>
-
-        <div className="space-y-4">
-          {categories.map((category) => (
-            <div key={category.id_category} className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 transition-colors hover:bg-gray-50">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  type="button"
-                  onClick={() => toggleDefaultCategory(category.id_category)}
-                  className="text-left"
-                >
-                  <h4 className="font-semibold text-gray-900">{category.ds_category}</h4>
-                  <p className="text-xs text-gray-500">
-                    {(subcategoriesByCategory[category.id_category] || []).length} subcategorías
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-[#0d9488]">
-                    {expandedDefaultCategories.has(category.id_category)
-                      ? 'Ocultar subcategorías'
-                      : 'Ver subcategorías'}
-                  </p>
-                </button>
-
-                <label className="text-sm font-medium text-gray-700">
-                  Aplicar a toda la vertical
-                  <select
-                    value={categoryDefaultValue(category.id_category)}
-                    onChange={(event) =>
-                      handleCategoryDefaultChange(category.id_category, event.target.value)
-                    }
-                    className="mt-1 block w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base text-gray-900 shadow-sm focus:border-[#0d9488] focus:outline-none focus:ring-[#0d9488]"
-                  >
-                    {categoryDefaultValue(category.id_category) === 'mixed' && (
-                      <option value="mixed" disabled>
-                        Mixto (varias partidas)
-                      </option>
-                    )}
-                    <option value="">Sin asignar</option>
-                    {budgetTypes.map((budgetType) => (
-                      <option
-                        key={budgetType.id_budget_type}
-                        value={budgetType.id_budget_type}
-                      >
-                        {budgetType.ds_budget_type}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              {expandedDefaultCategories.has(category.id_category) && (
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  {(subcategoriesByCategory[category.id_category] || []).map((subcategory) => (
-                    <label
-                      key={subcategory.id_subcategory}
-                      className="flex flex-col gap-1 text-sm font-medium text-gray-700"
-                    >
-                      {subcategory.ds_subcategory}
+          <div className="divide-y divide-gray-100">
+            {categories.map((category) => {
+              const isOpen = expandedDefaultCategories.has(category.id_category)
+              const subs = subcategoriesByCategory[category.id_category] || []
+              const value = categoryDefaultValue(category.id_category)
+              return (
+                <div key={category.id_category}>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2">
+                    <button type="button" onClick={() => toggleDefaultCategory(category.id_category)} className="flex min-w-[200px] flex-1 items-center gap-2 text-left">
+                      <span className={`text-xs text-gray-400 transition ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                      <span className="font-medium text-gray-900">{category.ds_category}</span>
+                      <span className="text-xs text-gray-400">{subs.length} sub.</span>
+                    </button>
+                    <label className="flex items-center gap-2 text-xs text-gray-500">
+                      Toda la vertical a
                       <select
-                        value={defaultBySubcategory.get(subcategory.id_subcategory) || ''}
-                        onChange={(event) =>
-                          handleDefaultChange(subcategory.id_subcategory, event.target.value)
-                        }
-                        disabled={savingDefault === subcategory.id_subcategory}
-                        className="rounded-xl border border-gray-300 px-3 py-2.5 text-base text-gray-900 shadow-sm focus:border-[#0d9488] focus:outline-none focus:ring-[#0d9488] disabled:bg-gray-100"
+                        value={value}
+                        onChange={(event) => handleCategoryDefaultChange(category.id_category, event.target.value)}
+                        className="min-w-[150px] rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-sm text-gray-900 focus:border-[#0d9488] focus:outline-none focus:ring-2 focus:ring-[#90EBD6]"
                       >
+                        {value === 'mixed' && (
+                          <option value="mixed" disabled>
+                            Varias partidas
+                          </option>
+                        )}
                         <option value="">Sin asignar</option>
                         {budgetTypes.map((budgetType) => (
-                          <option
-                            key={budgetType.id_budget_type}
-                            value={budgetType.id_budget_type}
-                          >
+                          <option key={budgetType.id_budget_type} value={budgetType.id_budget_type}>
                             {budgetType.ds_budget_type}
                           </option>
                         ))}
                       </select>
                     </label>
-                  ))}
+                  </div>
+                  {isOpen && (
+                    <div className="divide-y divide-gray-50 border-t border-gray-50 bg-gray-50/40">
+                      {subs.map((subcategory) => (
+                        <div key={subcategory.id_subcategory} className="flex flex-wrap items-center justify-between gap-3 py-1 pl-10 pr-4">
+                          <span className="text-sm text-gray-700">{subcategory.ds_subcategory}</span>
+                          <select
+                            value={defaultBySubcategory.get(subcategory.id_subcategory) || ''}
+                            onChange={(event) => handleDefaultChange(subcategory.id_subcategory, event.target.value)}
+                            disabled={savingDefault === subcategory.id_subcategory}
+                            className="min-w-[150px] rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-sm text-gray-900 focus:border-[#0d9488] focus:outline-none focus:ring-2 focus:ring-[#90EBD6] disabled:bg-gray-100"
+                          >
+                            <option value="">Sin asignar</option>
+                            {budgetTypes.map((budgetType) => (
+                              <option key={budgetType.id_budget_type} value={budgetType.id_budget_type}>
+                                {budgetType.ds_budget_type}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {tab === 'controles' && controlsSlot}
     </div>
   )
 }

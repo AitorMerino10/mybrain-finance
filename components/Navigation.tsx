@@ -12,6 +12,14 @@ const prefersReducedMotion = () => {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
+const SIDEBAR_EMOJIS: Record<string, string> = {
+  brain: '🧠',
+  plus: '➕',
+  chart: '📊',
+  budget: '📖',
+  settings: '⚙️',
+}
+
 interface NavigationProps {
   idFamily: string
   idUser: string
@@ -35,6 +43,7 @@ export default function Navigation({
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [isFamilyMenuOpen, setIsFamilyMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const profileMenuRef = useRef<HTMLDivElement>(null)
   const familyMenuRef = useRef<HTMLDivElement>(null)
 
@@ -86,6 +95,24 @@ export default function Navigation({
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
+  // El estado real del menú vive en <html data-sidebar> (lo pone un script antes de pintar, sin parpadeo)
+  useEffect(() => {
+    setSidebarCollapsed(document.documentElement.dataset.sidebar === 'collapsed')
+  }, [])
+
+  const toggleSidebar = () => {
+    const next = !(document.documentElement.dataset.sidebar === 'collapsed')
+    if (next) document.documentElement.dataset.sidebar = 'collapsed'
+    else delete document.documentElement.dataset.sidebar
+    try {
+      localStorage.setItem('mybrain:sidebar', next ? 'collapsed' : 'expanded')
+    } catch {
+      // sin almacenamiento: solo se pierde la preferencia
+    }
+    setSidebarCollapsed(next)
+    setIsFamilyMenuOpen(false)
+  }
+
   const handleFamilyChange = (newFamilyId: string) => {
     if (newFamilyId === currentFamilyId) {
       setIsFamilyMenuOpen(false)
@@ -100,45 +127,67 @@ export default function Navigation({
 
   return (
     <>
-      {/* Desktop Navigation - Sidebar */}
-      <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-50 lg:flex lg:w-72 lg:flex-col">
-        <div className="flex grow flex-col gap-y-5 overflow-y-auto bg-gradient-to-b from-slate-900 to-slate-800 px-6 pb-4">
-          <div className="flex h-16 shrink-0 items-center border-b border-slate-700">
-            <Link href={`/${currentFamilyId ? `?family=${currentFamilyId}` : ''}`} className="flex flex-col hover:opacity-80 transition-opacity">
+      {/* Desktop Navigation - Sidebar (se puede minimizar: solo emoticonos) */}
+      <aside className="app-sidebar hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-50 lg:flex lg:flex-col">
+        <div className="sidebar-pad flex grow flex-col gap-y-5 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-slate-900 to-slate-800 pb-4">
+          <div className="sidebar-header flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-700">
+            <Link
+              href={`/${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
+              className="sidebar-label flex flex-col transition-opacity hover:opacity-80"
+              title="MyBrain finance"
+            >
               <h1 className="text-2xl font-bold text-white">MyBrain</h1>
               <p className="text-xs text-slate-400">finance</p>
             </Link>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              title={sidebarCollapsed ? 'Expandir menú' : 'Minimizar menú'}
+              aria-label={sidebarCollapsed ? 'Expandir menú' : 'Minimizar menú'}
+              className="sidebar-toggle flex h-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
+            >
+              <span className="sidebar-mini text-2xl leading-none" aria-hidden>
+                🧠
+              </span>
+              <span className="sidebar-label px-2 text-base" aria-hidden>
+                «
+              </span>
+            </button>
           </div>
           <nav className="flex flex-1 flex-col">
             {/* Selector de familia en sidebar - solo escritorio */}
-            <div className="px-4 py-3 mb-4 bg-slate-700/50 border border-slate-600/50 rounded-lg">
+            <div className="sidebar-family mb-4 rounded-lg border border-slate-600/50 bg-slate-700/50 px-4 py-3">
               <div className="relative" ref={familyMenuRef}>
                 <button
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
+                    // Con el menú minimizado, el selector de familia primero lo expande
+                    if (sidebarCollapsed) {
+                      toggleSidebar()
+                      return
+                    }
                     setIsFamilyMenuOpen(!isFamilyMenuOpen)
                   }}
                   onMouseDown={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                   }}
-                  className="w-full flex items-center justify-between gap-2"
+                  title={families.find((f) => f.id_family === currentFamilyId)?.ds_family || 'Familia'}
+                  className="flex w-full items-center justify-between gap-2"
                 >
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <svg className="h-4 w-4 text-[#90EBD6] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                    </svg>
-                    <span className="text-xs font-semibold text-[#90EBD6] truncate">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="sidebar-emoji shrink-0 text-base leading-none">👪</span>
+                    <span className="sidebar-label truncate text-xs font-semibold text-[#90EBD6]">
                       {families.find(f => f.id_family === currentFamilyId)?.ds_family || 'Familia'}
                     </span>
                   </div>
-                  <svg className="h-3 w-3 text-[#90EBD6] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="sidebar-label h-3 w-3 flex-shrink-0 text-[#90EBD6]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                {isFamilyMenuOpen && (
-                  <div className="absolute left-0 right-0 mt-2 rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50 border border-gray-200">
+                {isFamilyMenuOpen && !sidebarCollapsed && (
+                  <div className="absolute left-0 right-0 z-50 mt-2 rounded-lg border border-gray-200 bg-white shadow-lg ring-1 ring-black ring-opacity-5">
                     <div className="py-1">
                       {families.map((family) => (
                         <button
@@ -153,9 +202,9 @@ export default function Navigation({
                             e.preventDefault()
                             e.stopPropagation()
                           }}
-                          className={`block w-full text-left px-4 py-2 text-sm transition-colors ${
+                          className={`block w-full px-4 py-2 text-left text-sm transition-colors ${
                             family.id_family === currentFamilyId
-                              ? 'bg-slate-600/50 text-[#90EBD6] font-semibold'
+                              ? 'bg-slate-600/50 font-semibold text-[#90EBD6]'
                               : 'text-slate-300 hover:bg-slate-600/30'
                           }`}
                         >
@@ -168,61 +217,32 @@ export default function Navigation({
               </div>
             </div>
             <ul role="list" className="flex flex-1 flex-col gap-y-1">
-              <li>
-                <Link
-                  href={`/${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
-                  className={`group flex gap-x-3 rounded-lg p-3 text-sm font-semibold leading-6 transition-colors ${
-                    isActive('/')
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                  }`}
-                >
-                  <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                  </svg>
-                  Inicio
-                </Link>
-              </li>
-              {navigationItems.map((item) => (
+              {[
+                { name: 'Inicio', href: `/${currentFamilyId ? `?family=${currentFamilyId}` : ''}`, emoji: '🏠', active: isActive('/') },
+                ...navigationItems.map((item) => ({
+                  name: item.name,
+                  href:
+                    item.href === '/' && item.isNewTransaction
+                      ? `/?family=${currentFamilyId}&action=new-transaction`
+                      : `${item.href}${item.preserveFamilyQuery === false ? '' : currentFamilyId ? `?family=${currentFamilyId}` : ''}`,
+                  emoji: SIDEBAR_EMOJIS[item.icon] ?? '•',
+                  active:
+                    (item.href === '/' && item.isNewTransaction && searchParams?.get('action') === 'new-transaction') ||
+                    (item.href === '/mybrain' ? isMyBrainActive : item.href !== '/' && isActive(item.href)),
+                })),
+              ].map((item) => (
                 <li key={item.name}>
                   <Link
-                    href={`${
-                      item.href === '/' && item.isNewTransaction
-                        ? `/?family=${currentFamilyId}&action=new-transaction`
-                        : `${item.href}${item.preserveFamilyQuery === false ? '' : currentFamilyId ? `?family=${currentFamilyId}` : ''}`
-                    }`}
-                    className={`group flex gap-x-3 rounded-lg p-3 text-sm font-semibold leading-6 transition-colors ${
-                      (item.href === '/' && item.isNewTransaction && searchParams?.get('action') === 'new-transaction') ||
-                      (item.href === '/mybrain' ? isMyBrainActive : item.href !== '/' && isActive(item.href))
-                        ? 'bg-slate-700 text-white'
-                        : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                    href={item.href}
+                    title={item.name}
+                    className={`sidebar-item group flex gap-x-3 rounded-lg p-3 text-sm font-semibold leading-6 transition-colors ${
+                      item.active ? 'bg-slate-700 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                     }`}
                   >
-                    {item.icon === 'plus' && (
-                      <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                      </svg>
-                    )}
-                    {item.icon === 'brain' && (
-                      <span className="h-5 w-5 shrink-0 text-base leading-5">🧠</span>
-                    )}
-                    {item.icon === 'chart' && (
-                      <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                      </svg>
-                    )}
-                    {item.icon === 'budget' && (
-                      <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 14.25l2.25 2.25L15 12m-6.75-7.5h7.5A2.25 2.25 0 0118 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-7.5A2.25 2.25 0 016 17.25V6.75A2.25 2.25 0 018.25 4.5z" />
-                      </svg>
-                    )}
-                    {item.icon === 'settings' && (
-                      <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    )}
-                    {item.name}
+                    <span className="sidebar-emoji h-6 w-6 shrink-0 text-center text-lg leading-6" aria-hidden>
+                      {item.emoji}
+                    </span>
+                    <span className="sidebar-label">{item.name}</span>
                   </Link>
                 </li>
               ))}
@@ -242,7 +262,7 @@ export default function Navigation({
               }`}
             >
               <svg className="h-5 w-5 mb-0.5" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 14.25l2.25 2.25L15 12m-6.75-7.5h7.5A2.25 2.25 0 0118 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-7.5A2.25 2.25 0 016 17.25V6.75A2.25 2.25 0 018.25 4.5z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
               </svg>
               <span className={`text-[10px] font-bold ${isActive('/budgets') ? 'text-slate-700' : 'text-slate-600'}`}>Presup.</span>
             </Link>

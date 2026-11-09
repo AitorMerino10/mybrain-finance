@@ -174,6 +174,14 @@ export function monthRange(from: string, to: string): string[] {
   return months
 }
 
+const MONTH_NAMES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+/** 2026-03 → "mar 26" */
+export function shortMonthLabel(month: string): string {
+  const [year, monthNumber] = month.split('-')
+  return `${MONTH_NAMES[Number(monthNumber) - 1] ?? month} ${year.slice(2)}`
+}
+
 /** Últimos N meses completos (excluye el mes en curso). */
 export function lastCompleteMonths(count: number): { from: string; to: string } {
   const to = addMonths(currentMonthKey(), -1)

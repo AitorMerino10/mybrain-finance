@@ -39,7 +39,7 @@ export default function PartidasManager({ idFamily, onChanged }: { idFamily: str
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
-  const [formOpen, setFormOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(true)
   const [newName, setNewName] = useState('')
   const [newCadence, setNewCadence] = useState<Cadence>('monthly')
   const [newOwner, setNewOwner] = useState('')
@@ -111,15 +111,8 @@ export default function PartidasManager({ idFamily, onChanged }: { idFamily: str
   if (loading) return <p className="text-sm text-gray-500">Cargando partidas...</p>
 
   return (
-    <section className="space-y-3 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold tracking-tight text-gray-900">Partidas presupuestarias</h3>
-          <p className="text-sm text-gray-500">
-            Los gastos que estimas para el año. Pulsa <span className="font-semibold text-gray-700">+</span> en una partida para
-            añadirle subpartidas (Viaje → Esquí, Verano…).
-          </p>
-        </div>
+    <section className="space-y-2 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         {migrationReady && own && !formOpen && (
           <button
             type="button"
@@ -141,18 +134,17 @@ export default function PartidasManager({ idFamily, onChanged }: { idFamily: str
                 setFormOpen(false)
               })
             }}
-            className="flex flex-wrap items-center gap-2"
+            className="flex flex-1 flex-wrap items-center gap-2"
           >
             <input
-              autoFocus
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Escape') setFormOpen(false)
               }}
-              placeholder="Nombre de la partida"
+              placeholder="Nueva partida (ej.: Mascotas)"
               aria-label="Nombre de la nueva partida"
-              className={`${fieldClass} w-48`}
+              className={`${fieldClass} min-w-[200px] flex-1`}
             />
             <select
               value={newCadence}
@@ -179,10 +171,7 @@ export default function PartidasManager({ idFamily, onChanged }: { idFamily: str
               disabled={busy || !newName.trim()}
               className="rounded-lg bg-[#0d9488] px-3 py-1.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
             >
-              Añadir
-            </button>
-            <button type="button" onClick={() => setFormOpen(false)} className="text-sm text-gray-400 hover:text-gray-700">
-              ✕
+              + Añadir
             </button>
           </form>
         )}
@@ -217,7 +206,7 @@ export default function PartidasManager({ idFamily, onChanged }: { idFamily: str
       )}
 
       {own && (
-        <ul className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-100">
+        <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
           {visible.map((type) => {
             const cadence = (type.ds_periodicity === 'annual' ? 'annual' : 'monthly') as Cadence
             const subs = subtypes.filter(
@@ -227,7 +216,7 @@ export default function PartidasManager({ idFamily, onChanged }: { idFamily: str
             return (
               <li
                 key={type.id_budget_type}
-                className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 ${type.is_archived ? 'bg-gray-50 opacity-70' : 'hover:bg-gray-50/50'}`}
+                className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 ${type.is_archived ? 'bg-gray-50 opacity-70' : 'hover:bg-gray-50/50'}`}
               >
                 <input
                   value={drafts[type.id_budget_type] ?? type.ds_budget_type}

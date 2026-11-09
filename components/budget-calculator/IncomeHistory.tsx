@@ -68,7 +68,7 @@ export default function IncomeHistory({
   ]
 
   return (
-    <section className="space-y-5 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+    <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
       <div>
         <h3 className="text-lg font-semibold text-gray-900">Histórico de ingresos</h3>
         <p className="text-sm text-gray-500">

@@ -49,10 +49,10 @@ export default async function BudgetsPage({
         showMyBrainLink={isMyBrainFamilyAllowed(selectedFamilyId)}
       />
 
-      <main className="lg:pl-72">
-        <div className="pt-4 sm:pt-6 pb-20 lg:pb-8 lg:pt-12 min-h-screen">
+      <main className="app-main">
+        <div className="pt-4 sm:pt-6 pb-20 lg:pb-8 lg:pt-8 min-h-screen">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="mb-4 sm:mb-6 flex items-center gap-3">
+            <div className="mb-3 flex items-center gap-3">
               <Link
                 href="/"
                 className="lg:hidden text-gray-600 hover:text-gray-900 transition-colors touch-manipulation p-2 -ml-2"
@@ -62,7 +62,7 @@ export default async function BudgetsPage({
                 </svg>
               </Link>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl sm:text-3xl font-bold italic text-gray-900 mb-1.5">
+                <h1 className="text-xl sm:text-2xl font-bold italic text-gray-900">
                   Presupuestos
                 </h1>
                 <HelpTooltip content="Define cuánto debería gastar cada persona y cómo se clasifican las subcategorías." />
@@ -70,12 +70,9 @@ export default async function BudgetsPage({
             </div>
 
             <div>
-              <BudgetsManager idFamily={selectedFamilyId} idUser={user.id} />
+              <BudgetsManager idFamily={selectedFamilyId} idUser={user.id} controlsSlot={<GoalsManager idFamily={selectedFamilyId} idUser={user.id} />} />
             </div>
 
-            <div className="mt-6">
-              <GoalsManager idFamily={selectedFamilyId} idUser={user.id} />
-            </div>
           </div>
         </div>
       </main>

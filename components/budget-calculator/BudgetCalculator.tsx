@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getFamilyMembers, type FamilyMember } from '@/lib/family'
@@ -12,6 +12,7 @@ import {
   getBudgetTypes,
   budgetTypeAppliesTo,
   hasFamilyBudgetTypes,
+  updateBudgetSubtype,
   updateBudgetType,
   getSubcategoryBudgetDefaults,
   getUserBudgetHistory,
@@ -36,6 +37,7 @@ import {
   distributeAmount,
   currentMonthKey,
   fetchCalculatorTransactions,
+  groupKeyFor,
   formatMoney,
   lastCompleteMonths,
   monthRange,
@@ -45,22 +47,28 @@ import {
   type BudgetLine,
   type CalcTransaction,
   type GroupLine,
+  type PeriodRow,
   type StatMethod,
 } from '@/lib/budget-calculator'
-import BudgetMatrix from './BudgetMatrix'
+import AmountsStep from './AmountsStep'
 import ControlsStep from './ControlsStep'
-import ExpensesStep from './ExpensesStep'
+import HistoryWindow from './HistoryWindow'
+import PartidasStep, { type PartidaPatch } from './PartidasStep'
+import RelateStep from './RelateStep'
 import IncomeHistory from './IncomeHistory'
 import { buildBreakdownCategories } from './MonthlyBreakdown'
 import SummaryPanel, { SavingsControls, type SavingsMode } from './SummaryPanel'
+import { Collapsible, StepIntro } from './guide'
 
 type IncomeItem = { id: string; name: string; amount: string; months: string }
 const STEPS = [
-  { id: 1, title: 'Periodo e ingresos', hint: 'Cuándo y cuánto entra' },
-  { id: 2, title: 'Gastos', hint: 'Qué sueles gastar' },
-  { id: 3, title: 'Resumen y ahorro', hint: 'Si llegas' },
-  { id: 4, title: 'Controles', hint: 'Vigilar verticales' },
-  { id: 5, title: 'Guardar', hint: 'Aplicar presupuestos' },
+  { id: 1, title: 'Ingresos', hint: '¿Cuánto entra?' },
+  { id: 2, title: 'Partidas', hint: '¿Qué presupuestos quieres?' },
+  { id: 3, title: 'Relacionar', hint: '¿Qué gasto va a cada una?' },
+  { id: 4, title: 'Importes', hint: '¿Cuánto en cada partida?' },
+  { id: 5, title: 'Revisión', hint: '¿Te cuadran los números?' },
+  { id: 6, title: 'Controles', hint: 'Opcional: vigilar gastos' },
+  { id: 7, title: 'Guardar', hint: 'Aplicar el presupuesto' },
 ]
 
 const inputClass =
@@ -111,55 +119,55 @@ function IncomeList({
   const update = (id: string, patch: Partial<IncomeItem>) =>
     onChange(items.map((item) => (item.id === id ? { ...item, ...patch } : item)))
 
+  const small = `${inputClass} !py-1.5`
   return (
-    <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
-      <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-      <p className="mb-4 text-sm text-gray-500">{description}</p>
-      <div className="space-y-3">
+    <section className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3">
+        <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+        <p className="text-xs text-gray-500">{description}</p>
+      </div>
+      <div className="space-y-1.5">
+        {items.length > 0 && (
+          <div className="hidden grid-cols-[1fr_120px_120px_100px_24px] gap-2 px-0.5 text-[11px] font-medium text-gray-500 sm:grid">
+            <span>Concepto</span>
+            <span>Importe (€)</span>
+            <span>{showMonths ? monthsLabel : ''}</span>
+            <span className="text-right">Total</span>
+            <span />
+          </div>
+        )}
         {items.map((item) => (
-          <div key={item.id} className="grid items-end gap-3 sm:grid-cols-[1fr_140px_140px_120px_auto]">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Concepto</label>
-              <input
-                value={item.name}
-                onChange={(event) => update(item.id, { name: event.target.value })}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Importe (€)</label>
+          <div key={item.id} className="grid items-center gap-2 sm:grid-cols-[1fr_120px_120px_100px_24px]">
+            <input value={item.name} aria-label="Concepto" onChange={(event) => update(item.id, { name: event.target.value })} className={small} />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={item.amount}
+              aria-label="Importe"
+              placeholder="€"
+              onChange={(event) => update(item.id, { amount: event.target.value })}
+              className={small}
+            />
+            {showMonths ? (
               <input
                 type="number"
                 min="0"
-                step="0.01"
-                value={item.amount}
-                onChange={(event) => update(item.id, { amount: event.target.value })}
-                className={inputClass}
+                step="1"
+                value={item.months}
+                aria-label={monthsLabel}
+                placeholder={monthsPlaceholder}
+                onChange={(event) => update(item.id, { months: event.target.value })}
+                className={small}
               />
-            </div>
-            {showMonths ? (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">{monthsLabel}</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={item.months}
-                  placeholder={monthsPlaceholder}
-                  onChange={(event) => update(item.id, { months: event.target.value })}
-                  className={inputClass}
-                />
-              </div>
             ) : (
               <div />
             )}
-            <div className="pb-2 text-right text-sm font-semibold text-gray-900 tabular-nums">
-              {formatMoney(totalFor(item))}
-            </div>
+            <div className="text-right text-sm font-semibold tabular-nums text-gray-900">{formatMoney(totalFor(item))}</div>
             <button
               type="button"
               onClick={() => onChange(items.filter((current) => current.id !== item.id))}
-              className="pb-2 text-gray-400 hover:text-red-500"
+              className="text-gray-300 hover:text-red-500"
               aria-label="Eliminar"
             >
               ✕
@@ -170,10 +178,8 @@ function IncomeList({
       </div>
       <button
         type="button"
-        onClick={() =>
-          onChange([...items, { id: newId(), name: defaultName, amount: '', months: defaultMonths }])
-        }
-        className="mt-4 rounded-xl border border-dashed border-[#0d9488] px-4 py-2 text-sm font-medium text-[#0d9488] hover:bg-[#90EBD6]/20"
+        onClick={() => onChange([...items, { id: newId(), name: defaultName, amount: '', months: defaultMonths }])}
+        className="mt-2 text-sm font-medium text-[#0d9488] hover:underline"
       >
         + {addLabel}
       </button>
@@ -203,7 +209,7 @@ export default function BudgetCalculator({
   /** Si se indica, se parte del presupuesto vigente pero como uno NUEVO que empieza en este mes */
   newStartMonth?: string
 }) {
-  const [step, setStep] = useState(initialStep)
+  const [step, setStep] = useState(Math.min(Math.max(1, initialStep), STEPS.length))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -236,7 +242,6 @@ export default function BudgetCalculator({
   const [subtypes, setSubtypes] = useState<BudgetSubtype[]>([])
   const [subtypesAvailable, setSubtypesAvailable] = useState(true)
   const [subAmounts, setSubAmounts] = useState<Record<string, string>>({})
-  const [newSubNames, setNewSubNames] = useState<Record<string, string>>({})
 
   // Ahorro
   const [savingsMode, setSavingsMode] = useState<SavingsMode>('percent')
@@ -258,13 +263,9 @@ export default function BudgetCalculator({
   const [editNotice, setEditNotice] = useState<{ tone: 'ok' | 'warn'; text: string } | null>(null)
   const [saveRelations, setSaveRelations] = useState(true)
   const [saving, setSaving] = useState(false)
-  // Alta rápida de una partida desde el paso de gastos
-  const [newPartidaName, setNewPartidaName] = useState('')
-  const [newPartidaCadence, setNewPartidaCadence] = useState<'monthly' | 'annual'>('monthly')
+  // Alta/baja de partidas desde el asistente
   const [addingPartida, setAddingPartida] = useState(false)
   const [partidaError, setPartidaError] = useState<string | null>(null)
-  const [partidaFormOpen, setPartidaFormOpen] = useState(false)
-  const [addingSubFor, setAddingSubFor] = useState<string | null>(null)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -354,6 +355,13 @@ export default function BudgetCalculator({
     () => buildBreakdownCategories(groups, monthsCount),
     [groups, monthsCount]
   )
+  // Para relacionar se listan todas las verticales con gasto en cualquier momento (no solo las de los meses analizados)
+  const relateCategories = useMemo(() => {
+    if (!minMonth || !maxMonth) return []
+    const allMonths = monthRange(minMonth, maxMonth)
+    const allRows = buildPeriodRows(transactions, minMonth, maxMonth, scopeUserId)
+    return buildBreakdownCategories(buildExpenseGroups(allRows, allMonths), allMonths.length)
+  }, [transactions, minMonth, maxMonth, scopeUserId])
   const typeStats = useMemo(
     () => buildTypeStats(groups, assignments, budgetTypes, monthsCount),
     [groups, assignments, budgetTypes, monthsCount]
@@ -408,8 +416,8 @@ export default function BudgetCalculator({
     parseNumber(directAmounts[idBudgetType]) +
     (subsByType.get(idBudgetType) || []).reduce((sum, sub) => sum + parseNumber(subAmounts[sub.id_budget_subtype]), 0)
 
-  // Presupuesto por partida = suma de sus subcategorías + subpartidas + cantidad adicional
-  const budgetLines = useMemo<BudgetLine[]>(
+  // Presupuesto calculado por partida = suma de sus subcategorías + subpartidas + cantidad adicional
+  const baseLines = useMemo<BudgetLine[]>(
     () =>
       budgetTypes.map((type) => {
         const stats = typeStats.byType[type.id_budget_type]
@@ -431,6 +439,35 @@ export default function BudgetCalculator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [budgetTypes, typeStats, groupLines, method, annualMonths, directAmounts, subAmounts, subsByType]
   )
+
+  // Presupuesto final por partida: el calculado o, si la persona lo ha fijado a mano, ese importe
+  const budgetLines = useMemo<BudgetLine[]>(
+    () =>
+      baseLines.map((line) => {
+        const raw = amountOverrides[line.type.id_budget_type]
+        if (raw === undefined || raw === '') return line
+        const amount = round2(parseNumber(raw))
+        return {
+          ...line,
+          amount,
+          wasOverridden: true,
+          monthlyEquivalent: line.type.ds_periodicity === 'monthly' ? amount : amount / annualMonths,
+        }
+      }),
+    [baseLines, amountOverrides, annualMonths]
+  )
+  const baseAmountOf = (idBudgetType: string) => baseLines.find((line) => line.type.id_budget_type === idBudgetType)?.amount ?? 0
+
+  /** Gastos del histórico de cada partida, según las relaciones subcategoría → partida elegidas */
+  const rowsByType = useMemo(() => {
+    const map = new Map<string, PeriodRow[]>()
+    for (const row of rows) {
+      const idType = assignments[groupKeyFor(row.tx)]
+      if (!idType) continue
+      map.set(idType, [...(map.get(idType) || []), row])
+    }
+    return map
+  }, [rows, assignments])
 
   const committedMonthly = budgetLines.reduce((sum, line) => sum + line.monthlyEquivalent, 0)
 
@@ -459,18 +496,46 @@ export default function BudgetCalculator({
   const maxBudgetForTarget = savingsTargetMonthly === null ? null : incomeMonthly - savingsTargetMonthly
 
   // ---------- Handlers ----------
-  const handleAddSubtype = async (idBudgetType: string) => {
-    const name = newSubNames[idBudgetType] ?? ''
-    if (!name.trim()) return
+  const handleAddSubtype = async (idBudgetType: string, name: string): Promise<boolean> => {
+    if (!name.trim()) return false
     try {
       setAddingPartida(true)
       setPartidaError(null)
       await createBudgetSubtype(supabase, { idFamily, idBudgetType, name })
       setSubtypes((await getBudgetSubtypes(supabase, idFamily)).subtypes)
-      setNewSubNames((current) => ({ ...current, [idBudgetType]: '' }))
-      setAddingSubFor(null)
+      return true
     } catch (err) {
       setPartidaError(err instanceof Error ? err.message : 'No se pudo crear la subpartida')
+      return false
+    } finally {
+      setAddingPartida(false)
+    }
+  }
+
+  const handleRemoveSubtype = async (sub: BudgetSubtype) => {
+    if (!window.confirm(`¿Quitar la subpartida "${sub.ds_budget_subtype}"? Se archiva: su histórico se conserva.`)) return
+    try {
+      setAddingPartida(true)
+      setPartidaError(null)
+      await updateBudgetSubtype(supabase, { idBudgetSubtype: sub.id_budget_subtype, archived: true })
+      setSubtypes((await getBudgetSubtypes(supabase, idFamily)).subtypes)
+    } catch (err) {
+      setPartidaError(err instanceof Error ? err.message : 'No se pudo quitar la subpartida')
+    } finally {
+      setAddingPartida(false)
+    }
+  }
+
+  const handleUpdatePartida = async (type: BudgetType, patch: PartidaPatch): Promise<boolean> => {
+    try {
+      setAddingPartida(true)
+      setPartidaError(null)
+      await updateBudgetType(supabase, { idBudgetType: type.id_budget_type, ...patch })
+      setBudgetTypes(await getBudgetTypes(supabase, idFamily))
+      return true
+    } catch (err) {
+      setPartidaError(err instanceof Error ? err.message : 'No se pudo actualizar la partida')
+      return false
     } finally {
       setAddingPartida(false)
     }
@@ -499,16 +564,29 @@ export default function BudgetCalculator({
     }
   }
 
-  const handleAddPartida = async () => {
+  const handleAddPartida = async ({
+    name,
+    cadence,
+    onlyForScope,
+  }: {
+    name: string
+    cadence: 'monthly' | 'annual'
+    onlyForScope: boolean
+  }): Promise<boolean> => {
     try {
       setAddingPartida(true)
       setPartidaError(null)
-      await createBudgetType(supabase, { idFamily, name: newPartidaName, periodicity: newPartidaCadence })
+      await createBudgetType(supabase, {
+        idFamily,
+        name,
+        periodicity: cadence,
+        idUser: onlyForScope ? scopeUserId : null,
+      })
       setBudgetTypes(await getBudgetTypes(supabase, idFamily))
-      setNewPartidaName('')
-      setPartidaFormOpen(false)
+      return true
     } catch (err) {
       setPartidaError(err instanceof Error ? err.message : 'No se pudo crear la partida')
+      return false
     } finally {
       setAddingPartida(false)
     }
@@ -566,6 +644,32 @@ export default function BudgetCalculator({
       return next
     })
 
+  const handleAmountOverride = (idBudgetType: string, raw: string) =>
+    setAmountOverrides((current) => {
+      const next = { ...current }
+      if (raw === '') delete next[idBudgetType]
+      else next[idBudgetType] = raw
+      return next
+    })
+
+  // Lo que se suma a una partida (subpartidas / importe adicional) también se suma a un importe fijado a mano
+  const shiftOverride = (idBudgetType: string, delta: number) =>
+    setAmountOverrides((current) => {
+      const raw = current[idBudgetType]
+      if (raw === undefined || raw === '' || delta === 0) return current
+      return { ...current, [idBudgetType]: String(round2(Math.max(0, parseNumber(raw) + delta))) }
+    })
+
+  const handleSubAmountChange = (idBudgetType: string, idSubtype: string, raw: string) => {
+    shiftOverride(idBudgetType, parseNumber(raw) - parseNumber(subAmounts[idSubtype]))
+    setSubAmounts((current) => ({ ...current, [idSubtype]: raw }))
+  }
+
+  const handleDirectAmountChange = (idBudgetType: string, raw: string) => {
+    shiftOverride(idBudgetType, parseNumber(raw) - parseNumber(directAmounts[idBudgetType]))
+    setDirectAmounts((current) => ({ ...current, [idBudgetType]: raw }))
+  }
+
   const handleUseAverageIncome = (monthlyAverage: number) =>
     setRecurring((current) => {
       const values = { amount: String(monthlyAverage), months: '' }
@@ -596,10 +700,7 @@ export default function BudgetCalculator({
 
   const relationChangesCount = relationChanges.upserts.length + relationChanges.deletes.length
   // Importe que se guardará: el editado a mano o, si no hay, el calculado
-  const finalAmount = (line: BudgetLine) => {
-    const override = amountOverrides[line.type.id_budget_type]
-    return override !== undefined && override !== '' ? round2(parseNumber(override)) : line.amount
-  }
+  const finalAmount = (line: BudgetLine) => line.amount
   const commentFor = (line: BudgetLine) => commentOverrides[line.type.id_budget_type] ?? ''
 
   const linesToSave = budgetLines.filter((line) => finalAmount(line) > 0)
@@ -639,7 +740,7 @@ export default function BudgetCalculator({
     savingsMode,
     savingsValue,
     manualAmounts: Object.fromEntries(
-      budgetLines
+      baseLines
         .filter((line) => {
           const value = amountOverrides[line.type.id_budget_type]
           return value !== undefined && value !== '' && round2(parseNumber(value)) !== line.amount
@@ -849,7 +950,7 @@ export default function BudgetCalculator({
         'la persona'
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Cabecera */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -861,13 +962,14 @@ export default function BudgetCalculator({
           </p>
         </div>
         <div className="w-full sm:w-64">
-          <label className="mb-1 block text-xs font-medium text-gray-500">Calcular para</label>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Presupuesto de</label>
           <select
             value={scope}
             onChange={(event) => {
               setScope(event.target.value)
               setGroupOverrides({}) // los importes manuales eran de otra persona
               setCategoryOverrides({})
+              setAmountOverrides({})
             }}
             className={inputClass}
           >
@@ -894,8 +996,30 @@ export default function BudgetCalculator({
         </div>
       )}
 
+      <Collapsible
+        title="¿Cómo funciona esto?"
+        subtitle="Un presupuesto en 7 pasos: cuánto entra, qué partidas quieres, cuánto pones en cada una y cuánto te queda"
+      >
+        <div className="space-y-2 text-sm leading-relaxed text-gray-700">
+          <p>
+            Un <strong>presupuesto</strong> reparte lo que ingresas entre <strong>partidas</strong> (por ejemplo «Casa», «Comida», «Viajes»). Lo que no
+            repartes es tu <strong>ahorro</strong>.
+          </p>
+          <ol className="list-decimal space-y-1 pl-5">
+            <li><strong>Ingresos:</strong> desde cuándo es y cuánto cobras al mes.</li>
+            <li><strong>Partidas:</strong> decides qué presupuestos quieres (Casa, Comida, Viajes…), sin importes todavía.</li>
+            <li><strong>Relacionar:</strong> dices qué verticales y subverticales de gasto van a cada partida.</li>
+            <li><strong>Importes:</strong> ves cuánto has gastado en cada partida (media, mediana, percentil) y eliges cuánto presupuestar.</li>
+            <li><strong>Revisión:</strong> indicas cuánto quieres ahorrar y compruebas si cuadra.</li>
+            <li><strong>Controles</strong> (opcional): vigilas un gasto concreto, como comer fuera.</li>
+            <li><strong>Guardar:</strong> se aplica desde el mes que elijas; el anterior se conserva.</li>
+          </ol>
+          <p className="text-xs text-gray-500">Puedes ir y volver entre pasos. Nada cuenta hasta que lo guardas en el último.</p>
+        </div>
+      </Collapsible>
+
       {/* Stepper */}
-      <nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      <nav className="flex flex-wrap gap-1.5">
         {STEPS.map((item) => {
           const active = step === item.id
           const done = step > item.id
@@ -904,23 +1028,19 @@ export default function BudgetCalculator({
               key={item.id}
               type="button"
               onClick={() => setStep(item.id)}
-              className={`rounded-xl border px-3 py-2 text-left transition ${
-                active
-                  ? 'border-[#0d9488] bg-[#90EBD6]/30 shadow-sm'
-                  : 'border-gray-100 bg-white hover:border-gray-200'
+              title={item.hint}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${
+                active ? 'border-[#0d9488] bg-[#90EBD6]/30 font-semibold text-gray-900' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
               }`}
             >
-              <div className="flex items-center gap-2">
-                <span
-                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                    active || done ? 'bg-[#0d9488] text-white' : 'bg-gray-100 text-gray-500'
-                  }`}
-                >
-                  {done ? '✓' : item.id}
-                </span>
-                <span className="font-semibold text-gray-900">{item.title}</span>
-              </div>
-              <div className="mt-0.5 hidden text-[11px] text-gray-500 sm:block">{item.hint}</div>
+              <span
+                className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+                  active || done ? 'bg-[#0d9488] text-white' : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {done ? '✓' : item.id}
+              </span>
+              {item.title}
             </button>
           )
         })}
@@ -950,38 +1070,44 @@ export default function BudgetCalculator({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-      <div className="min-w-0 space-y-6">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+      <div className="min-w-0 space-y-3">
       {/* Paso 1: Ingresos */}
       {step === 1 && (
-        <div className="space-y-5">
-          <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900">Periodo del presupuesto</h3>
-            <p className="mb-4 text-sm text-gray-500">
-              Elige desde cuándo y, si quieres, hasta cuándo aplica. Los meses del plan se calculan solos y se usan para
-              ingresos y para las partidas anuales (Viaje, Excepcional).
-            </p>
-            <div className="flex flex-wrap items-end gap-4">
+        <div className="space-y-3">
+          <StepIntro
+            step={1}
+            total={STEPS.length}
+            title="Periodo e ingresos"
+            what={<>Cuándo empieza el presupuesto y cuánto ingresas al mes.</>}
+            todo={[
+              'Elige el mes de inicio (y, si quieres, un fin).',
+              'Escribe lo que cobras cada mes. Si no lo tienes claro, abre la ayuda de abajo y usa la media de lo que ingresaste antes.',
+            ]}
+            result="Al terminar sabrás tu ingreso medio mensual."
+          />
+          <section className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">Desde</label>
+                <label className="mb-0.5 block text-xs font-medium text-gray-500">Desde</label>
                 <input
                   type="month"
                   value={startMonth}
                   onChange={(event) => event.target.value && setStartMonth(event.target.value)}
-                  className={`${inputClass} w-48`}
+                  className={`${inputClass} w-40 !py-1.5`}
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">Hasta (opcional)</label>
+                <label className="mb-0.5 block text-xs font-medium text-gray-500">Hasta (opcional)</label>
                 <input
                   type="month"
                   min={startMonth}
                   value={endMonth}
                   onChange={(event) => setEndMonth(event.target.value)}
-                  className={`${inputClass} w-48`}
+                  className={`${inputClass} w-40 !py-1.5`}
                 />
               </div>
-              <div className="flex flex-wrap gap-3 pb-2 text-xs font-medium">
+              <div className="flex gap-3 pb-2 text-xs font-medium">
                 <button type="button" onClick={() => setEndMonth(`${startMonth.slice(0, 4)}-12`)} className="text-[#0d9488] hover:underline">
                   Fin de año
                 </button>
@@ -991,27 +1117,27 @@ export default function BudgetCalculator({
                   </button>
                 )}
               </div>
-            </div>
-            <div className="mt-4 rounded-2xl border border-teal-100 bg-[#90EBD6]/20 p-4 text-sm text-teal-900">
-              {hasEndMonth ? (
-                <>
-                  <strong>{planMonthsNumber} {planMonthsNumber === 1 ? 'mes' : 'meses'}</strong> ({startMonth} → {endMonth}). Las partidas
-                  anuales se presupuestan <strong>para todo este periodo</strong>, no por año.
-                </>
-              ) : (
-                <>
-                  Sin fecha de fin: se calcula sobre <strong>12 meses</strong> y las partidas anuales son <strong>por año</strong>.
-                </>
-              )}
+              <p className="min-w-[220px] flex-1 pb-1.5 text-xs text-gray-500">
+                {hasEndMonth ? (
+                  <>
+                    <strong className="text-gray-700">{planMonthsNumber} {planMonthsNumber === 1 ? 'mes' : 'meses'}</strong>: las partidas «total del periodo»
+                    se reparten entre ellos.
+                  </>
+                ) : (
+                  <>
+                    <strong className="text-gray-700">Sin fin</strong>: se calcula sobre 12 meses y las partidas «total del periodo» son por año.
+                  </>
+                )}
+              </p>
             </div>
             {endMonth !== '' && endMonth < startMonth && (
-              <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">La fecha de fin no puede ser anterior al inicio.</p>
+              <p className="mt-2 rounded-xl bg-red-50 p-2 text-sm text-red-700">La fecha de fin no puede ser anterior al inicio.</p>
             )}
           </section>
 
           <IncomeList
             title="Ingresos mensuales"
-            description={`Importe que cobras cada mes. Por defecto cuenta todos los meses del periodo (${planMonthsNumber}); puedes cambiarlo en un ingreso concreto.`}
+            description={`Lo que cobras cada mes. Sin «Nº de meses» cuenta los ${planMonthsNumber} del periodo.`}
             items={recurring}
             onChange={setRecurring}
             showMonths
@@ -1022,6 +1148,14 @@ export default function BudgetCalculator({
             defaultMonths=""
             totalFor={recurringTotal}
           />
+          <Collapsible
+            key={annualIncomes.length + bonuses.length > 0 ? 'with-other-incomes' : 'no-other-incomes'}
+            tone="section"
+            title="¿Cobras algo que no sea mensual?"
+            subtitle="Paga extra anual o bonus: se reparten entre los meses del periodo"
+            badge={annualIncomes.length + bonuses.length > 0 ? `${annualIncomes.length + bonuses.length} añadido${annualIncomes.length + bonuses.length > 1 ? 's' : ''}` : undefined}
+            defaultOpen={annualIncomes.length + bonuses.length > 0}
+          >
           <IncomeList
             title="Ingresos anuales"
             description="Importe por año; se prorratea según los meses del periodo."
@@ -1047,23 +1181,27 @@ export default function BudgetCalculator({
             totalFor={recurringTotal}
           />
 
-          <section className="rounded-3xl border border-teal-100 bg-[#90EBD6]/20 p-5">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total del periodo ({planMonthsNumber} {planMonthsNumber === 1 ? 'mes' : 'meses'})</div>
-                <div className="text-xl font-bold text-gray-900">{formatMoney(incomeTotal)}</div>
-              </div>
-              <div>
-                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Media mensual</div>
-                <div className="text-xl font-bold text-gray-900">{formatMoney(incomeMonthly)}</div>
-              </div>
-              <div>
-                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Anualizado</div>
-                <div className="text-xl font-bold text-gray-900">{formatMoney(incomeMonthly * 12)}</div>
-              </div>
+          </Collapsible>
+
+          <section className="flex flex-wrap items-baseline gap-x-8 gap-y-1 rounded-2xl border border-teal-100 bg-[#90EBD6]/20 px-4 py-2.5">
+            <div>
+              <span className="text-xs text-gray-500">Total del periodo ({planMonthsNumber} {planMonthsNumber === 1 ? 'mes' : 'meses'}) </span>
+              <span className="text-lg font-bold tabular-nums text-gray-900">{formatMoney(incomeTotal)}</span>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">Media mensual </span>
+              <span className="text-lg font-bold tabular-nums text-gray-900">{formatMoney(incomeMonthly)}</span>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">Anualizado </span>
+              <span className="text-lg font-bold tabular-nums text-gray-900">{formatMoney(incomeMonthly * 12)}</span>
             </div>
           </section>
 
+          <Collapsible
+            title="Ayuda: ver cuánto has ingresado antes"
+            subtitle="Gráfica y tabla de tus ingresos pasados, con un botón para usar la media como ingreso mensual"
+          >
           <IncomeHistory
             from={period.from}
             to={period.to}
@@ -1074,322 +1212,270 @@ export default function BudgetCalculator({
             rows={incomeRows}
             onUseAverage={handleUseAverageIncome}
           />
+          </Collapsible>
         </div>
       )}
 
-      {/* Paso 2: Gastos */}
+      {/* Paso 2: Qué partidas */}
       {step === 2 && (
-        <div className="space-y-5">
-        <section className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-5 pb-2 pt-4">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900">Partidas del presupuesto</h3>
-              <p className="text-xs text-gray-500">
-                Cada partida suma lo de sus verticales, sus subpartidas y su importe directo (sin vertical).
-              </p>
-            </div>
-            {hasFamilyBudgetTypes(budgetTypes, idFamily) ? (
-              partidaFormOpen ? (
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault()
-                    if (newPartidaName.trim()) handleAddPartida()
-                  }}
-                  className="flex flex-wrap items-center gap-2"
-                >
-                  <input
-                    autoFocus
-                    value={newPartidaName}
-                    onChange={(event) => setNewPartidaName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape') setPartidaFormOpen(false)
-                    }}
-                    placeholder="Nombre de la partida"
-                    aria-label="Nombre de la nueva partida"
-                    className="w-44 rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm focus:border-[#0d9488] focus:outline-none focus:ring-2 focus:ring-[#90EBD6]"
-                  />
-                  <select
-                    value={newPartidaCadence}
-                    onChange={(event) => setNewPartidaCadence(event.target.value as 'monthly' | 'annual')}
-                    aria-label="Cadencia de la nueva partida"
-                    className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-[#0d9488] focus:outline-none focus:ring-2 focus:ring-[#90EBD6]"
-                  >
-                    <option value="monthly">€/mes</option>
-                    <option value="annual">Total periodo</option>
-                  </select>
-                  <button
-                    type="submit"
-                    disabled={addingPartida || !newPartidaName.trim()}
-                    className="rounded-lg bg-[#0d9488] px-3 py-1.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
-                  >
-                    Añadir
-                  </button>
-                  <button type="button" onClick={() => setPartidaFormOpen(false)} className="text-sm text-gray-400 hover:text-gray-700">
-                    ✕
-                  </button>
-                </form>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setPartidaFormOpen(true)}
-                  className="rounded-lg border border-[#0d9488] px-3 py-1.5 text-sm font-semibold text-[#0d9488] hover:bg-[#90EBD6]/20"
-                >
-                  + Partida
-                </button>
-              )
-            ) : (
-              <Link href={`/budgets?family=${idFamily}`} className="text-xs font-semibold text-[#0d9488] underline">
-                Gestionar partidas
-              </Link>
-            )}
-          </div>
-          {partidaError && <p className="mx-5 mb-2 rounded-lg bg-red-50 px-3 py-1.5 text-xs text-red-700">{partidaError}</p>}
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="border-y border-gray-100 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                <tr>
-                  <th className="px-5 py-1.5">Partida</th>
-                  <th className="px-3 py-1.5 text-right">Verticales</th>
-                  <th className="px-3 py-1.5">Importe directo</th>
-                  <th className="px-3 py-1.5 text-right">Total</th>
-                  <th className="px-3 py-1.5 text-right">€/mes</th>
-                  <th className="w-8 px-2 py-1.5" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 text-gray-800">
-                {budgetLines.map((line) => {
-                  const id = line.type.id_budget_type
-                  const extra = extraOf(id)
-                  const unit = line.type.ds_periodicity === 'annual' ? annualUnitLabel : 'mes'
-                  const subs = subsByType.get(id) || []
-                  const canAddSub = subtypesAvailable && hasFamilyBudgetTypes(budgetTypes, idFamily)
-                  const inputClassName =
-                    'w-24 rounded-lg border border-gray-200 px-2 py-1 text-sm tabular-nums focus:border-[#0d9488] focus:outline-none focus:ring-2 focus:ring-[#90EBD6]'
-                  return (
-                    <Fragment key={id}>
-                      <tr className="hover:bg-gray-50/50">
-                        <td className="px-5 py-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-medium text-gray-900">{line.type.ds_budget_type}</span>
-                            {canAddSub &&
-                              (addingSubFor === id ? (
-                                <form
-                                  onSubmit={(event) => {
-                                    event.preventDefault()
-                                    handleAddSubtype(id)
-                                  }}
-                                  className="flex items-center gap-1"
-                                >
-                                  <input
-                                    autoFocus
-                                    value={newSubNames[id] ?? ''}
-                                    onChange={(event) => setNewSubNames((current) => ({ ...current, [id]: event.target.value }))}
-                                    onKeyDown={(event) => {
-                                      if (event.key === 'Escape') setAddingSubFor(null)
-                                    }}
-                                    onBlur={() => {
-                                      if (!(newSubNames[id] ?? '').trim()) setAddingSubFor(null)
-                                    }}
-                                    placeholder="Subpartida…"
-                                    aria-label={`Nueva subpartida de ${line.type.ds_budget_type}`}
-                                    className="w-32 rounded-md border border-[#0d9488] px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#90EBD6]"
-                                  />
-                                  <button type="submit" disabled={addingPartida} className="text-xs font-semibold text-[#0d9488] hover:underline">
-                                    ↵
-                                  </button>
-                                </form>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setAddingSubFor(id)}
-                                  title={`Añadir subpartida a ${line.type.ds_budget_type}`}
-                                  aria-label={`Añadir subpartida a ${line.type.ds_budget_type}`}
-                                  className="flex h-5 w-5 items-center justify-center rounded-full border border-gray-200 text-xs font-bold leading-none text-gray-400 hover:border-[#0d9488] hover:bg-[#90EBD6]/20 hover:text-[#0d9488]"
-                                >
-                                  +
-                                </button>
-                              ))}
-                          </div>
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">{formatMoney(round2(line.amount - extra))}</td>
-                        <td className="px-3 py-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={directAmounts[id] ?? ''}
-                              onChange={(event) =>
-                                setDirectAmounts((current) => {
-                                  const next = { ...current }
-                                  if (event.target.value === '') delete next[id]
-                                  else next[id] = event.target.value
-                                  return next
-                                })
-                              }
-                              placeholder={subs.length > 0 ? 'Adicional' : '0'}
-                              aria-label={`Cantidad adicional de ${line.type.ds_budget_type}`}
-                              className={inputClassName}
-                            />
-                            <span className="text-[11px] text-gray-400">€/{unit}</span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-semibold tabular-nums">{formatMoney(line.amount)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">{formatMoney(line.monthlyEquivalent)}</td>
-                        <td className="px-2 py-1.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleRemovePartida(line.type)}
-                            disabled={addingPartida}
-                            title="Quitar esta partida"
-                            aria-label={`Quitar la partida ${line.type.ds_budget_type}`}
-                            className="text-xs text-gray-300 hover:text-red-500 disabled:opacity-40"
-                          >
-                            ✕
-                          </button>
-                        </td>
-                      </tr>
-                      {subs.map((sub) => (
-                        <tr key={sub.id_budget_subtype} className="bg-gray-50/60">
-                          <td className="py-1 pl-10 pr-3 text-xs text-gray-600">↳ {sub.ds_budget_subtype}</td>
-                          <td className="px-3 py-1" />
-                          <td className="px-3 py-1">
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                type="number"
-                                min="0"
-                                step="1"
-                                value={subAmounts[sub.id_budget_subtype] ?? ''}
-                                onChange={(event) =>
-                                  setSubAmounts((current) => {
-                                    const next = { ...current }
-                                    if (event.target.value === '') delete next[sub.id_budget_subtype]
-                                    else next[sub.id_budget_subtype] = event.target.value
-                                    return next
-                                  })
-                                }
-                                placeholder="0"
-                                aria-label={`Importe de ${sub.ds_budget_subtype}`}
-                                className={inputClassName}
-                              />
-                              <span className="text-[11px] text-gray-400">€/{unit}</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-1 text-right text-xs tabular-nums text-gray-500">
-                            {formatMoney(parseNumber(subAmounts[sub.id_budget_subtype]))}
-                          </td>
-                          <td colSpan={2} />
-                        </tr>
-                      ))}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <ExpensesStep
-          from={period.from}
-          to={period.to}
-          onPeriodChange={handlePeriodChange}
-          months={months}
-          minMonth={minMonth}
-          maxMonth={maxMonth}
-          method={method}
-          onMethodChange={setMethod}
-          budgetTypes={budgetTypes}
-          groups={groups}
-          rows={rows}
-          assignments={assignments}
-          onAssign={handleAssign}
-          onAssignMany={handleAssignMany}
-          typeStats={typeStats}
-          groupLines={groupLines}
-          groupOverrides={groupOverrides}
-          scopeLabel={scopeUserId ? scopeName : 'familia'}
-          onGroupOverrideChange={handleGroupOverrideChange}
-          categoryOverrides={categoryOverrides}
-          onCategoryOverrideChange={handleCategoryOverrideChange}
-          annualMonths={annualMonths}
-          annualUnitLabel={annualUnitLabel}
-          onResetOverrides={() => {
-            setGroupOverrides({})
-            setCategoryOverrides({})
-          }}
-        />
+        <div className="space-y-3">
+          <StepIntro
+            step={2}
+            total={STEPS.length}
+            title="¿Qué presupuestos quieres tener?"
+            what={<>Elige los «cajones» de dinero (Casa, Comida, Viajes…). Aún sin importes.</>}
+            todo={[
+              'Revisa las partidas que tienes: quita las que no uses y añade las que te falten.',
+              'Si una partida agrupa cosas distintas (por ejemplo «Viajes» → esquí, verano), divídela en subpartidas.',
+            ]}
+            result="En el siguiente paso relacionarás tus gastos con estas partidas."
+          />
+          <PartidasStep
+            idFamily={idFamily}
+            scopeUserId={scopeUserId}
+            scopeName={scopeName}
+            members={members}
+            budgetTypes={budgetTypes}
+            subtypes={subtypes}
+            subtypesAvailable={subtypesAvailable}
+            canManage={hasFamilyBudgetTypes(budgetTypes, idFamily)}
+            busy={addingPartida}
+            error={partidaError}
+            onCreate={handleAddPartida}
+            onUpdate={handleUpdatePartida}
+            onRemove={handleRemovePartida}
+            onAddSub={handleAddSubtype}
+            onRemoveSub={handleRemoveSubtype}
+          />
         </div>
       )}
 
-      {/* Paso 3: Resumen y ahorro */}
+      {/* Paso 3: Relacionar verticales con partidas */}
       {step === 3 && (
-        <div className="space-y-5">
-          <div className="lg:hidden rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
-            <SavingsControls
-              mode={savingsMode}
-              value={savingsValue}
-              onModeChange={setSavingsMode}
-              onValueChange={setSavingsValue}
-            />
+        <div className="space-y-3">
+          <StepIntro
+            step={3}
+            total={STEPS.length}
+            title="¿Qué gasto va a cada partida?"
+            what={<>Es la partida por defecto de cada vertical y subvertical; al crear cada gasto podrás asignarlo a otra. Sirve para calcular después tus presupuestos a partir del histórico.</>}
+            todo={[
+              'Para cada vertical, elige su partida en «Toda la vertical a». Si una subvertical va a otra partida, ábrela y cámbiala.',
+              'Intenta que no quede nada «Sin partida»: lo que no se relacione no cuenta en tu presupuesto.',
+            ]}
+            result="Estas relaciones también se usan para proponer partida cuando registres gastos nuevos."
+          />
+          <RelateStep
+            categories={relateCategories}
+            budgetTypes={budgetTypes}
+            assignments={assignments}
+            onAssign={handleAssign}
+            onAssignMany={handleAssignMany}
+          />
+        </div>
+      )}
+
+      {/* Paso 4: Importes por partida */}
+      {step === 4 && (
+        <div className="space-y-3">
+          <StepIntro
+            step={4}
+            total={STEPS.length}
+            title="¿Cuánto quieres presupuestar en cada partida?"
+            what={<>Mira cuánto sueles gastar en cada partida y elige cuánto presupuestar.</>}
+            todo={[
+              'Elige cuántos meses de histórico usar (por defecto, los últimos 12).',
+              'En cada partida pulsa la cifra que quieras usar, o escribe tu importe. Si quieres ver de dónde sale, abre «Ver cómo salen estas cifras».',
+            ]}
+            result="Por defecto se usa la media. Los cambios se ven al momento en el resumen."
+          />
+          <HistoryWindow from={period.from} to={period.to} minMonth={minMonth} onChange={handlePeriodChange} />
+          <AmountsStep
+            lines={budgetLines}
+            overrides={amountOverrides}
+            rowsByType={rowsByType}
+            months={months}
+            annualMonths={annualMonths}
+            annualUnitLabel={annualUnitLabel}
+            subsByType={subsByType}
+            subAmounts={subAmounts}
+            directAmounts={directAmounts}
+            unassigned={typeStats.unassigned}
+            onAmountChange={handleAmountOverride}
+            onSubAmountChange={handleSubAmountChange}
+            onDirectAmountChange={handleDirectAmountChange}
+          />
+        </div>
+      )}
+
+      {/* Paso 5: Revisión y ahorro */}
+      {step === 5 && (
+        <div className="space-y-3">
+          <StepIntro
+            step={5}
+            total={STEPS.length}
+            title="¿Te cuadran los números?"
+            what={<>Lo que ingresas menos lo que repartes es tu ahorro. ¿Llegas a tu objetivo?</>}
+            todo={[
+              'Indica tu objetivo de ahorro (un % de tus ingresos, una cantidad fija o «Auto» si no tienes objetivo).',
+              'Mira la cuenta de abajo. Si no cuadra, vuelve a Importes para bajar alguna partida, o a Ingresos si falta algo.',
+            ]}
+          />
+
+          {incomeMonthly <= 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+              <span>
+                <strong>No has indicado ingresos</strong>: el ahorro saldrá negativo.
+              </span>
+              <button type="button" onClick={() => setStep(1)} className="font-semibold underline">
+                Ir a Ingresos
+              </button>
+            </div>
+          )}
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <section className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+              <h3 className="mb-2 text-sm font-semibold text-gray-900">¿Cuánto quieres ahorrar?</h3>
+              <SavingsControls mode={savingsMode} value={savingsValue} onModeChange={setSavingsMode} onValueChange={setSavingsValue} />
+              {savingsMode !== 'auto' && savingsValue.trim() === '' && (
+                <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">No has escrito cuánto quieres ahorrar: se toma como 0.</p>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+              <h3 className="mb-1 text-sm font-semibold text-gray-900">La cuenta (al mes)</h3>
+              <dl className="divide-y divide-gray-50 text-sm">
+                <div className="flex items-baseline justify-between gap-3 py-1">
+                  <dt className="text-gray-600">
+                    Ingresas
+                    <button type="button" onClick={() => setStep(1)} className="ml-2 text-xs text-[#0d9488] hover:underline">
+                      cambiar
+                    </button>
+                  </dt>
+                  <dd className="font-semibold tabular-nums text-gray-900">{formatMoney(incomeMonthly)}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3 py-1">
+                  <dt className="text-gray-600">
+                    − Repartes en partidas
+                    <button type="button" onClick={() => setStep(4)} className="ml-2 text-xs text-[#0d9488] hover:underline">
+                      cambiar
+                    </button>
+                  </dt>
+                  <dd className="font-semibold tabular-nums text-gray-900">{formatMoney(committedMonthly)}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3 py-1">
+                  <dt className="font-medium text-gray-900">= Te queda</dt>
+                  <dd className={`font-bold tabular-nums ${availableMonthly >= 0 ? 'text-teal-800' : 'text-red-700'}`}>{formatMoney(availableMonthly)}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3 py-1">
+                  <dt className="text-gray-600">
+                    Querías ahorrar
+                    <span className="ml-1.5 text-xs text-gray-400">
+                      {savingsMode === 'percent' ? `(${savingsValue || 0} %)` : savingsMode === 'amount' ? '(fijo)' : '(sin objetivo)'}
+                    </span>
+                  </dt>
+                  <dd className="font-semibold tabular-nums text-gray-900">{savingsTargetMonthly === null ? '—' : formatMoney(savingsTargetMonthly)}</dd>
+                </div>
+                {savingsTargetMonthly !== null && (
+                  <div className="flex items-baseline justify-between gap-3 py-1">
+                    <dt className="font-medium text-gray-900">{reachesTarget ? 'Ahorras de más' : 'Ahorras de menos'}</dt>
+                    <dd className={`font-bold tabular-nums ${reachesTarget ? 'text-teal-800' : 'text-red-700'}`}>
+                      {formatMoney(Math.abs(availableMonthly - savingsTargetMonthly))}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+              {budgetLines.some((line) => line.type.ds_periodicity !== 'monthly') && (
+                <p className="mt-1 text-[11px] text-gray-400">Las partidas de total del periodo se reparten entre sus meses.</p>
+              )}
+            </section>
           </div>
 
           <section
-            className={`rounded-3xl border p-5 ${
-              (reachesTarget === null ? availableMonthly >= 0 : reachesTarget)
-                ? 'border-teal-100 bg-[#90EBD6]/20'
-                : 'border-red-100 bg-red-50'
+            className={`rounded-2xl border px-4 py-3 ${
+              (reachesTarget === null ? availableMonthly >= 0 : reachesTarget) ? 'border-teal-100 bg-[#90EBD6]/20' : 'border-red-100 bg-red-50'
             }`}
           >
             {reachesTarget === null ? (
-              <p className="text-lg font-semibold text-gray-900">
+              <p className="font-semibold text-gray-900">
                 {availableMonthly >= 0
                   ? `Con estos presupuestos ahorrarías ${formatMoney(availableMonthly)} al mes (${formatMoney(availableMonthly * annualMonths)} ${hasEndMonth ? 'en el periodo' : 'al año'}).`
                   : `Con estos presupuestos gastarías ${formatMoney(-availableMonthly)} más de lo que ingresas al mes.`}
               </p>
             ) : reachesTarget ? (
-              <p className="text-lg font-semibold text-teal-900">
-                ✓ Llegas al objetivo: ahorras {formatMoney(availableMonthly)}/mes frente a {formatMoney(savingsTargetMonthly!)} que buscabas
-                (sobran {formatMoney(availableMonthly - savingsTargetMonthly!)}/mes).
+              <p className="font-semibold text-teal-900">
+                ✓ Llegas al objetivo: ahorras {formatMoney(availableMonthly)}/mes frente a {formatMoney(savingsTargetMonthly!)} (sobran{' '}
+                {formatMoney(availableMonthly - savingsTargetMonthly!)}/mes).
               </p>
             ) : (
-              <p className="text-lg font-semibold text-red-800">
-                ✗ No llegas: ahorras {formatMoney(availableMonthly)}/mes y buscabas {formatMoney(savingsTargetMonthly!)}
-                {' '}(faltan {formatMoney(savingsTargetMonthly! - availableMonthly)}/mes).
+              <p className="font-semibold text-red-800">
+                ✗ No llegas: ahorras {formatMoney(availableMonthly)}/mes y buscabas {formatMoney(savingsTargetMonthly!)} (faltan{' '}
+                {formatMoney(savingsTargetMonthly! - availableMonthly)}/mes).
               </p>
             )}
             {maxBudgetForTarget !== null && (
-              <p className="mt-2 text-sm text-gray-600">
-                Para cumplir el objetivo tus presupuestos deberían sumar como máximo{' '}
-                <strong>{formatMoney(maxBudgetForTarget)}</strong> al mes; ahora suman{' '}
+              <p className="mt-0.5 text-xs text-gray-600">
+                Para cumplirlo, las partidas deberían sumar como máximo <strong>{formatMoney(maxBudgetForTarget)}</strong>/mes; ahora suman{' '}
                 <strong>{formatMoney(committedMonthly)}</strong>.
               </p>
             )}
           </section>
 
-          <section className="space-y-3">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Cuánto gastas en cada partida y en cada vertical</h3>
-              <p className="text-sm text-gray-500">
-                Importes en la unidad de cada partida (mensual o anual); las dos últimas columnas lo llevan todo a €/mes
-                y €/año. Despliega para ver cada subcategoría. Abajo, el ingreso y lo que te queda.
-              </p>
-            </div>
-            <BudgetMatrix
-              categories={breakdownCategories}
-              budgetTypes={budgetTypes}
-              budgetLines={budgetLines}
-              groupLines={groupLines}
-              incomeMonthly={incomeMonthly}
-              annualMonths={annualMonths}
-              annualUnitLabel={annualUnitLabel}
-              directAmounts={Object.fromEntries(budgetTypes.map((type) => [type.id_budget_type, extraOf(type.id_budget_type)]))}
-            />
+          <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-gray-100 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-4 py-1">Partida</th>
+                  <th className="px-3 py-1 text-right">Presupuesto</th>
+                  <th className="px-3 py-1 text-right">€/mes</th>
+                  <th className="px-4 py-1 text-right">% ingreso</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 text-gray-800">
+                {budgetLines.map((line) => (
+                  <tr key={line.type.id_budget_type} className={line.amount > 0 ? '' : 'opacity-50'}>
+                    <td className="px-4 py-1 font-medium text-gray-900">{line.type.ds_budget_type}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">
+                      {formatMoney(line.amount)}
+                      <span className="ml-1 text-xs text-gray-400">{line.type.ds_periodicity === 'monthly' ? '/mes' : `/${annualUnitLabel}`}</span>
+                    </td>
+                    <td className="px-3 py-1 text-right tabular-nums text-gray-600">{formatMoney(line.monthlyEquivalent)}</td>
+                    <td className="px-4 py-1 text-right tabular-nums text-gray-500">
+                      {incomeMonthly > 0 ? `${((line.monthlyEquivalent / incomeMonthly) * 100).toFixed(1)}%` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t border-gray-100 bg-gray-50 font-semibold text-gray-900">
+                <tr>
+                  <td className="px-4 py-1.5">Total</td>
+                  <td className="px-3 py-1.5" />
+                  <td className="px-3 py-1.5 text-right tabular-nums">{formatMoney(committedMonthly)}</td>
+                  <td className="px-4 py-1.5 text-right tabular-nums text-gray-600">
+                    {incomeMonthly > 0 ? `${((committedMonthly / incomeMonthly) * 100).toFixed(1)}%` : '—'}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
           </section>
-
         </div>
       )}
 
-      {/* Paso 4: Controles */}
-      {step === 4 && (
+      {/* Paso 6: Controles */}
+      {step === 6 && (
+        <div className="space-y-3">
+        <StepIntro
+          step={6}
+          total={STEPS.length}
+          optional
+          title="¿Quieres vigilar algún gasto en concreto?"
+          what={
+            <>
+              Un <strong>control</strong> te avisa de cuánto llevas gastado en algo concreto (por ejemplo «comer fuera» o «ropa») sin que sea una partida
+              del presupuesto. Si no lo necesitas, pasa directamente al siguiente paso.
+            </>
+          }
+          result="Los controles se guardan al momento, no hace falta el paso final."
+        />
         <ControlsStep
           categories={breakdownCategories}
           idFamily={idFamily}
@@ -1398,16 +1484,32 @@ export default function BudgetCalculator({
           startMonth={startMonth}
           endMonth={endMonth}
         />
+        </div>
       )}
 
-      {/* Paso 5: Guardar */}
-      {step === 5 && (
-        <div className="space-y-5">
-          <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900">Presupuestos que se guardarán</h3>
+      {/* Paso 7: Guardar */}
+      {step === 7 && (
+        <div className="space-y-3">
+          <StepIntro
+            step={7}
+            total={STEPS.length}
+            title="Revisa y guarda"
+            what={
+              <>
+                Estos son los importes que se aplicarán a <strong>{scopeName}</strong>. Puedes retocar cualquiera antes de guardar. Se guardan como una{' '}
+                <strong>versión nueva desde el mes que elijas</strong>: lo anterior no se borra.
+              </>
+            }
+            todo={[
+              'Revisa el «Importe a guardar» de cada partida (las que estén a 0 no se guardan).',
+              'Comprueba desde qué mes vale y pulsa «Guardar presupuestos».',
+            ]}
+          />
+          <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+            <h3 className="text-lg font-semibold text-gray-900">Importes por partida</h3>
             <p className="mb-4 text-sm text-gray-500">
-              Se guardan para <strong>{scopeName}</strong> como nueva versión desde el mes que elijas (el histórico anterior se conserva).
-              Solo se guardan las partidas con importe mayor que 0.
+              «Guardado ahora» es lo que hay en vigor; «Calculado» es lo que sale de los pasos anteriores. Lo que pongas en «Importe a guardar» es lo que
+              cuenta.
             </p>
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <button
@@ -1448,7 +1550,8 @@ export default function BudgetCalculator({
                     const saved = savedFor(id)
                     const unit = line.type.ds_periodicity === 'monthly' ? '/mes' : `/${annualUnitLabel}`
                     const savedUnit = line.type.ds_periodicity === 'monthly' ? '/mes' : saved?.is_period_amount ? '/periodo' : '/año'
-                    const edited = amountOverrides[id] !== undefined && amountOverrides[id] !== '' && round2(parseNumber(amountOverrides[id])) !== line.amount
+                    const base = baseAmountOf(id)
+                    const edited = amountOverrides[id] !== undefined && amountOverrides[id] !== '' && round2(parseNumber(amountOverrides[id])) !== base
                     return (
                       <tr key={id} className={finalAmount(line) > 0 ? '' : 'opacity-60'}>
                         <td className="px-4 py-3">
@@ -1478,7 +1581,7 @@ export default function BudgetCalculator({
                           )}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums text-gray-500">
-                          {formatMoney(line.amount, 2)}
+                          {formatMoney(base, 2)}
                           <span className="ml-1 text-gray-400">{unit}</span>
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right">
@@ -1487,7 +1590,7 @@ export default function BudgetCalculator({
                               type="number"
                               min="0"
                               step="0.01"
-                              value={edited ? amountOverrides[id] : String(line.amount)}
+                              value={amountOverrides[id] !== undefined ? amountOverrides[id] : String(base)}
                               onChange={(event) => setAmountOverrides((current) => ({ ...current, [id]: event.target.value }))}
                               className={`${inputClass} w-28 text-right font-semibold tabular-nums ${edited ? 'border-[#0d9488] bg-[#90EBD6]/10' : ''}`}
                             />
@@ -1522,7 +1625,7 @@ export default function BudgetCalculator({
             </div>
           </section>
 
-          <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500">Vigente desde</label>
@@ -1625,22 +1728,25 @@ export default function BudgetCalculator({
       )}
 
       {/* Navegación */}
-      <div className="flex justify-between">
+      <div className="flex items-center justify-between gap-3">
         <button
           type="button"
           onClick={() => setStep((current) => Math.max(1, current - 1))}
           disabled={step === 1}
           className="rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
         >
-          ← Anterior
+          ← {step > 1 ? STEPS[step - 2].title : 'Anterior'}
         </button>
-        {step < 5 && (
+        <span className="hidden text-xs text-gray-400 sm:block">
+          Paso {step} de {STEPS.length}
+        </span>
+        {step < STEPS.length && (
           <button
             type="button"
-            onClick={() => setStep((current) => Math.min(5, current + 1))}
+            onClick={() => setStep((current) => Math.min(STEPS.length, current + 1))}
             className="rounded-xl bg-[#0d9488] px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
           >
-            Siguiente →
+            Siguiente: {STEPS[step].title} →
           </button>
         )}
       </div>

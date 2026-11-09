@@ -145,6 +145,7 @@ export default function AnalyticsPageClient({
   const [detailsSubcategoryFilter, setDetailsSubcategoryFilter] = useState<string>('')
   const [detailsTransactionTypeFilter, setDetailsTransactionTypeFilter] = useState<{ income: boolean; expense: boolean }>({ income: true, expense: true })
   const [detailsSharingFilter, setDetailsSharingFilter] = useState<'all' | 'solo' | 'shared'>('all')
+  const [detailsSearch, setDetailsSearch] = useState('')
   const [editingTransaction, setEditingTransaction] = useState<TransactionWithRelations | null>(null)
   
   // Tooltip activo para móvil
@@ -558,6 +559,7 @@ export default function AnalyticsPageClient({
 
   // Filtrar transacciones para sección Detalle
   const getFilteredDetailsTransactions = () => {
+    const searchTerms = normalizeSearch(detailsSearch).split(' ').filter(Boolean)
     return detailsTransactions.filter(t => {
       // Filtro de tipo (puede estar ambos seleccionados o solo uno)
       if (t.transactionType === 'Income' && !detailsTransactionTypeFilter.income) {
@@ -571,6 +573,11 @@ export default function AnalyticsPageClient({
       }
       if (detailsSubcategoryFilter && t.id_subcategory !== detailsSubcategoryFilter) {
         return false
+      }
+      // Búsqueda de texto: comentario, tag, vertical, subvertical, fecha e importe
+      if (searchTerms.length > 0) {
+        const haystack = transactionSearchText(t)
+        if (!searchTerms.every(term => haystack.includes(term))) return false
       }
       // Filtro de compartición
       if (detailsSharingFilter === 'solo') {
@@ -1309,6 +1316,8 @@ export default function AnalyticsPageClient({
             setDetailsTransactionTypeFilter={setDetailsTransactionTypeFilter}
             detailsSharingFilter={detailsSharingFilter}
             setDetailsSharingFilter={setDetailsSharingFilter}
+            search={detailsSearch}
+            setSearch={setDetailsSearch}
             setEditingTransaction={setEditingTransaction}
             onDeleteTransaction={handleDeleteTransaction}
             filteredUserIds={filters.idUsers}
@@ -1536,6 +1545,36 @@ function FiltersPanel({
   )
 }
 
+/** Minúsculas, sin tildes y con los espacios normalizados: para buscar sin preocuparse de cómo se escribe. */
+function normalizeSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Texto en el que busca el buscador de Detalle: comentario, tag, vertical, subvertical, fecha e importe. */
+function transactionSearchText(t: TransactionWithRelations): string {
+  const [year, month, day] = (t.dt_date || '').slice(0, 10).split('-')
+  const amounts = [t.ft_amount, ...(t.users || []).map(u => u.ft_amount_user)]
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+    .flatMap(value => [String(value), value.toFixed(2), value.toFixed(2).replace('.', ',')])
+  const parts = [
+    t.ds_comments,
+    t.tag?.ds_tag,
+    t.category?.ds_category,
+    t.subcategory?.ds_subcategory,
+    t.dt_date,
+    day && month && year ? `${day}/${month}/${year}` : '',
+    t.dt_date ? formatDate(t.dt_date, 'long') : '',
+    t.ds_month_declared,
+    ...amounts,
+  ]
+  return normalizeSearch(parts.filter(Boolean).join(' '))
+}
+
 // Componente de Sección Detalle
 function DetailsSection({
   transactions,
@@ -1544,6 +1583,8 @@ function DetailsSection({
   setDetailsTransactionTypeFilter,
   detailsSharingFilter,
   setDetailsSharingFilter,
+  search,
+  setSearch,
   setEditingTransaction,
   onDeleteTransaction,
   filteredUserIds,
@@ -1558,6 +1599,8 @@ function DetailsSection({
   setDetailsTransactionTypeFilter: (value: { income: boolean; expense: boolean }) => void
   detailsSharingFilter: 'all' | 'solo' | 'shared'
   setDetailsSharingFilter: (value: 'all' | 'solo' | 'shared') => void
+  search: string
+  setSearch: (value: string) => void
   setEditingTransaction: (transaction: TransactionWithRelations | null) => void
   onDeleteTransaction: (idTransaction: string) => void
   filteredUserIds?: string[] | null
@@ -1622,7 +1665,38 @@ function DetailsSection({
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-6">Detalle de Transacciones</h2>
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Detalle de Transacciones</h2>
+
+        {/* Buscador: comentario, tag, vertical, subvertical, fecha e importe */}
+        <div className="relative mb-4">
+          <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z" />
+          </svg>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(1)
+            }}
+            placeholder="Buscar por comentario, tag, vertical, subvertical, fecha o importe…"
+            aria-label="Buscar transacciones"
+            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-9 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#90EBD6] focus:outline-none focus:ring-2 focus:ring-[#90EBD6]/30"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('')
+                setPage(1)
+              }}
+              aria-label="Borrar búsqueda"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-1.5 text-gray-400 hover:text-gray-700"
+            >
+              ✕
+            </button>
+          )}
+        </div>
 
         {/* Botones de filtro de tipo (toggle) */}
         <div className="flex gap-2 mb-3">
@@ -2262,13 +2336,22 @@ function CompactMultiSelect({
   onToggle: (id: string, checked: boolean) => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const selectedCount = selectedIds.length
+  const normalizedQuery = normalizeSearch(query)
+  const visibleItems = normalizedQuery
+    ? items.filter(item => normalizeSearch(item.label).includes(normalizedQuery))
+    : items
+  const close = () => {
+    setIsOpen(false)
+    setQuery('')
+  }
                               
                               return (
     <div className="relative">
                                       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => (isOpen ? close() : setIsOpen(true))}
         className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-left bg-white hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#90EBD6]/20 focus:border-[#90EBD6] flex items-center justify-between"
       >
         <span className="text-gray-700">
@@ -2280,9 +2363,25 @@ function CompactMultiSelect({
                                       </button>
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-          <div className="absolute z-20 mt-1 w-full bg-white rounded-lg border border-gray-200 shadow-lg max-h-48 overflow-y-auto">
-            {items.map(item => (
+          <div className="fixed inset-0 z-10" onClick={close} />
+          <div className="absolute z-20 mt-1 w-full bg-white rounded-lg border border-gray-200 shadow-lg max-h-64 overflow-y-auto">
+            <div className="sticky top-0 border-b border-gray-100 bg-white p-2">
+              <input
+                autoFocus
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') close()
+                  if (e.key === 'Enter') e.preventDefault()
+                }}
+                placeholder="Escribe para buscar…"
+                aria-label="Buscar opción"
+                className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-[#90EBD6] focus:outline-none focus:ring-2 focus:ring-[#90EBD6]/30"
+              />
+            </div>
+            {visibleItems.length === 0 && <p className="px-3 py-3 text-sm text-gray-400">Sin resultados</p>}
+            {visibleItems.map(item => (
               <label key={item.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
                 <input
                   type="checkbox"

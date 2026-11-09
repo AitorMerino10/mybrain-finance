@@ -220,16 +220,13 @@ export default function BudgetsOverview({
   })
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h3 className="text-xl font-semibold tracking-tight text-gray-900">Presupuestos</h3>
-          <p className="text-sm text-gray-500">
-            {view === 'current'
-              ? 'El presupuesto vigente de cada persona y lo que se estima ahorrar.'
-              : 'Presupuestos que ya dejaron de estar vigentes. Puedes abrir cualquiera para editarlo.'}
-          </p>
-        </div>
+    <section className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-gray-500">
+          {view === 'current'
+            ? 'Presupuesto vigente de cada persona. Pulsa un importe para cambiarlo.'
+            : 'Presupuestos que ya no están vigentes. Abre cualquiera para editarlo.'}
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-xl bg-gray-100 p-1 text-sm font-medium">
             {(
@@ -242,7 +239,7 @@ export default function BudgetsOverview({
                 key={value}
                 type="button"
                 onClick={() => setView(value)}
-                className={`rounded-lg px-3 py-1.5 transition ${
+                className={`rounded-lg px-3 py-1 transition ${
                   view === value ? 'bg-white text-[#0d9488] shadow-sm' : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
@@ -255,7 +252,7 @@ export default function BudgetsOverview({
             <select
               value={userFilter}
               onChange={(event) => setUserFilter(event.target.value)}
-              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-[#0d9488] focus:outline-none focus:ring-2 focus:ring-[#90EBD6]"
+              className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-[#0d9488] focus:outline-none focus:ring-2 focus:ring-[#90EBD6]"
             >
               {members.map((member) => (
                 <option key={member.id_user} value={member.id_user}>
@@ -270,15 +267,15 @@ export default function BudgetsOverview({
       </div>
 
       {view === 'current' ? (
-        <div className={`grid gap-4 ${cards.length > 1 ? 'xl:grid-cols-2' : ''}`}>
+        <div className={`grid gap-3 ${cards.length > 1 ? 'xl:grid-cols-2' : ''}`}>
           {cards.map((card) => {
             const name = card.member.ds_user || card.member.ds_email || 'Sin nombre'
             const hasBudget = card.byType.size > 0
             return (
-              <article key={card.member.id_user} className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+              <article key={card.member.id_user} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
                 {/* Cabecera */}
-                <header className="flex flex-wrap items-center gap-3 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white px-5 py-3.5">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#90EBD6]/40 text-base font-bold text-[#0d9488]">
+                <header className="flex flex-wrap items-center gap-3 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white px-4 py-2.5">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#90EBD6]/40 text-sm font-bold text-[#0d9488]">
                     {initialOf(name)}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -317,7 +314,7 @@ export default function BudgetsOverview({
 
                 <div className="grid gap-0 md:grid-cols-[1fr_15rem]">
                   {/* Partidas */}
-                  <ul className="divide-y divide-gray-50 px-5 py-2">
+                  <ul className="divide-y divide-gray-50 px-4 py-1">
                     {budgetTypes
                       .filter((type) => budgetTypeAppliesTo(type, card.member.id_user) || card.byType.has(type.id_budget_type))
                       .map((type) => {
@@ -332,7 +329,7 @@ export default function BudgetsOverview({
                             .filter((item) => item.amount > 0)
                         : []
                       return (
-                        <li key={type.id_budget_type} className="py-2">
+                        <li key={type.id_budget_type} className="py-1.5">
                           <div className="flex items-baseline gap-3">
                             <span className={`min-w-0 flex-1 truncate text-sm ${version ? 'font-medium text-gray-900' : 'text-gray-400'}`}>
                               {type.ds_budget_type}
@@ -385,7 +382,7 @@ export default function BudgetsOverview({
                   </ul>
 
                   {/* Resumen */}
-                  <aside className="space-y-3 border-t border-gray-100 bg-gray-50/60 px-5 py-4 md:border-l md:border-t-0">
+                  <aside className="space-y-2.5 border-t border-gray-100 bg-gray-50/60 px-4 py-3 md:border-l md:border-t-0">
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Gasto estimado</p>
                       <p className="text-lg font-bold tabular-nums text-gray-900">
@@ -426,6 +423,12 @@ export default function BudgetsOverview({
                           <p className={`text-lg font-bold tabular-nums ${balance.realSavings >= 0 ? 'text-teal-700' : 'text-red-600'}`}>
                             {money(balance.realSavings)}
                           </p>
+                          <details className="group">
+                            <summary className="cursor-pointer list-none text-xs font-medium text-[#0d9488] hover:underline">
+                              <span className="group-open:hidden">▸ Ver cómo se calcula</span>
+                              <span className="hidden group-open:inline">▾ Ocultar desglose</span>
+                            </summary>
+                            <div className="mt-1.5">
                           <dl className="space-y-0.5 text-xs text-gray-500">
                             <div className="flex justify-between gap-2">
                               <dt>Ingresado</dt>
@@ -454,6 +457,8 @@ export default function BudgetsOverview({
                               </div>
                             )}
                           </dl>
+                            </div>
+                          </details>
                           {close && (
                             <>
                               <button
@@ -502,7 +507,7 @@ export default function BudgetsOverview({
           {cards.length === 0 && <p className="text-sm text-gray-500">No hay personas que mostrar.</p>}
         </div>
       ) : (
-        <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
           <BudgetEvolution
             versions={versions}
             budgetTypes={budgetTypes}

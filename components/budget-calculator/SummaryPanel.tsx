@@ -96,7 +96,7 @@ export default function SummaryPanel({
   const reaches = savingsTargetMonthly === null ? null : availableMonthly >= savingsTargetMonthly
 
   return (
-    <aside className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+    <aside className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Resumen en vivo</h3>
 
       <div className="mt-4 flex items-baseline justify-between">

@@ -47,7 +47,7 @@ export default async function BudgetCalculatorPage({
         showMyBrainLink={isMyBrainFamilyAllowed(selectedFamilyId)}
       />
 
-      <main className="lg:pl-72">
+      <main className="app-main">
         <div className="pt-4 sm:pt-6 pb-20 lg:pb-8 lg:pt-12 min-h-screen">
           <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8">
             <div className="mb-4 sm:mb-6 flex items-center gap-2">
@@ -60,7 +60,7 @@ export default async function BudgetCalculatorPage({
             <BudgetCalculator
               idFamily={selectedFamilyId}
               idUser={user.id}
-              initialStep={searchParams.edit ? 5 : 1}
+              initialStep={searchParams.edit ? 7 : 1}
               startFromSaved={Boolean(searchParams.edit)}
               initialScope={searchParams.user}
               initialMonth={searchParams.month && /^\d{4}-\d{2}$/.test(searchParams.month) ? searchParams.month : undefined}
