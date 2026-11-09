@@ -59,7 +59,7 @@ export default async function SettingsPage({
       
       {/* Main Content */}
       <main className="app-main">
-        <div className="pt-4 sm:pt-6 pb-20 lg:pb-8 lg:pt-12 bg-gray-50 min-h-screen">
+        <div className="pt-4 sm:pt-6 pb-6 lg:pb-8 lg:pt-12 bg-gray-50 min-h-screen">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mb-4 sm:mb-6 flex items-center gap-3">
               {/* Botón volver en móvil */}

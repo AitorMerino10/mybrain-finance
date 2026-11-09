@@ -50,7 +50,7 @@ export default async function BudgetsPage({
       />
 
       <main className="app-main">
-        <div className="pt-4 sm:pt-6 pb-20 lg:pb-8 lg:pt-8 min-h-screen">
+        <div className="pt-4 sm:pt-6 pb-6 lg:pb-8 lg:pt-8 min-h-screen">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mb-3 flex items-center gap-3">
               <Link

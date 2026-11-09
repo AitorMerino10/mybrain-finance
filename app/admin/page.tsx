@@ -129,7 +129,7 @@ export default async function AdminPage({
       
       {/* Main Content */}
       <main className="app-main">
-        <div className="pt-4 sm:pt-6 pb-20 lg:pb-8 lg:pt-12">
+        <div className="pt-4 sm:pt-6 pb-6 lg:pb-8 lg:pt-12">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <AdminPageClient
               initialFamilies={familiesData}

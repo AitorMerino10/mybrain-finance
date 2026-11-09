@@ -44,7 +44,29 @@ html[data-hide-bottom-nav='true'] .app-bottom-nav {
   display: none;
 }
 
+/* Móvil: la barra de abajo (4rem + zona segura del iPhone) no tapa el final de las páginas */
+@media (max-width: 1023px) {
+  .app-main {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+  html[data-hide-bottom-nav='true'] .app-main {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* iOS hace zoom al tocar un campo con letra menor de 16px: así no se mueve la pantalla */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
+  overflow-x: clip;
   color: var(--foreground);
   background: var(--background);
   font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;

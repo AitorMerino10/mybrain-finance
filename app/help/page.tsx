@@ -44,7 +44,7 @@ export default async function HelpPage({
       />
 
       <main className="app-main">
-        <div className="pt-4 sm:pt-6 pb-20 lg:pb-8 lg:pt-12 bg-gray-50 min-h-screen">
+        <div className="pt-4 sm:pt-6 pb-6 lg:pb-8 lg:pt-12 bg-gray-50 min-h-screen">
           <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 space-y-6">
             <div className="mb-4 sm:mb-6 flex items-center gap-3">
               <Link
@@ -63,7 +63,7 @@ export default async function HelpPage({
               </div>
             </div>
 
-            <section className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl shadow-sm border border-slate-700 p-5 sm:p-8 text-white space-y-3">
+            <section className="bg-slate-900 rounded-2xl shadow-sm border border-slate-700 p-5 sm:p-8 text-white space-y-3">
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide">
                   MyBrain Finance · v0

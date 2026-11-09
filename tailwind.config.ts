@@ -9,6 +9,12 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Azul del logo (#12222E): sustituye a los azules oscuros por defecto en toda la app
+        slate: {
+          700: '#2B4357',
+          800: '#1A3142',
+          900: '#12222E',
+        },
         background: "var(--background)",
         foreground: "var(--foreground)",
         brand: {

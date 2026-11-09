@@ -8,12 +8,12 @@ export const metadata: Metadata = {
   description: "Gestión inteligente de finanzas personales y familiares",
   applicationName: "MyBrain finance",
   appleWebApp: { capable: true, title: "MyBrain", statusBarStyle: "black" },
-  icons: { icon: "/app-icon/192", apple: "/app-icon/180" },
+  icons: { icon: "/app-icon/rounded/192", apple: "/app-icon/180" },
   formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#071A2B",
+  themeColor: "#12222E",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

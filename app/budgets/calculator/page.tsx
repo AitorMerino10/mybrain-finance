@@ -48,7 +48,7 @@ export default async function BudgetCalculatorPage({
       />
 
       <main className="app-main">
-        <div className="pt-4 sm:pt-6 pb-20 lg:pb-8 lg:pt-12 min-h-screen">
+        <div className="pt-4 sm:pt-6 pb-6 lg:pb-8 lg:pt-12 min-h-screen">
           <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8">
             <div className="mb-4 sm:mb-6 flex items-center gap-2">
               <h1 className="text-2xl sm:text-3xl font-bold italic text-gray-900 mb-1.5">
