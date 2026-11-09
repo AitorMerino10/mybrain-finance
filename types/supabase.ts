@@ -437,6 +437,66 @@ export type Database = {
           },
         ]
       }
+      pml_pending_transaction: {
+        Row: {
+          dt_created: string
+          dt_date: string
+          ds_card: string | null
+          ds_merchant: string | null
+          ds_source: string
+          ft_amount: number
+          id_family: string
+          id_pending_transaction: string
+          id_user: string
+        }
+        Insert: {
+          dt_created?: string
+          dt_date?: string
+          ds_card?: string | null
+          ds_merchant?: string | null
+          ds_source?: string
+          ft_amount: number
+          id_family: string
+          id_pending_transaction?: string
+          id_user: string
+        }
+        Update: {
+          dt_created?: string
+          dt_date?: string
+          ds_card?: string | null
+          ds_merchant?: string | null
+          ds_source?: string
+          ft_amount?: number
+          id_family?: string
+          id_pending_transaction?: string
+          id_user?: string
+        }
+        Relationships: []
+      }
+      pml_cfg_api_token: {
+        Row: {
+          ds_token_hash: string
+          dt_created: string
+          dt_last_used: string | null
+          id_family: string
+          id_user: string
+        }
+        Insert: {
+          ds_token_hash: string
+          dt_created?: string
+          dt_last_used?: string | null
+          id_family: string
+          id_user: string
+        }
+        Update: {
+          ds_token_hash?: string
+          dt_created?: string
+          dt_last_used?: string | null
+          id_family?: string
+          id_user?: string
+        }
+        Relationships: []
+      }
       pml_cfg_push_subscription: {
         Row: {
           dt_created: string

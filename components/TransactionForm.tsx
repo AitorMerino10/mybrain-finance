@@ -47,6 +47,10 @@ interface TransactionFormProps {
   idUser: string
   onSuccess?: () => void
   onCancel?: () => void
+  /** Valores con los que arranca el formulario (p. ej. un gasto pendiente del móvil) */
+  initialValues?: { amount: number; date: string; comments?: string | null }
+  /** Se llama justo después de crear la transacción (también con "Guardar y nueva") */
+  onCreated?: () => void
 }
 
 export default function TransactionForm({
@@ -55,6 +59,8 @@ export default function TransactionForm({
   idUser,
   onSuccess,
   onCancel,
+  initialValues,
+  onCreated,
 }: TransactionFormProps) {
   const [formData, setFormData] = useState<TransactionFormData>({
     id_type: '',
@@ -91,6 +97,20 @@ export default function TransactionForm({
   const [showSubcategoryModal, setShowSubcategoryModal] = useState(false)
   const [showTagModal, setShowTagModal] = useState(false)
   const [amountInputValue, setAmountInputValue] = useState<string>('')
+
+  // Rellenar importe, fecha y nombre cuando vienen de un gasto pendiente
+  useEffect(() => {
+    if (!initialValues) return
+    const [year, month] = initialValues.date.split('-')
+    setFormData((prev) => ({
+      ...prev,
+      ft_amount: initialValues.amount,
+      dt_date: initialValues.date,
+      ds_month_declared: `${month}-${year}`,
+      ds_comments: initialValues.comments ?? null,
+    }))
+    setAmountInputValue(String(initialValues.amount))
+  }, [initialValues?.amount, initialValues?.date, initialValues?.comments]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cargar tipo de transacción, categorías, tags y miembros de la familia al montar
   useEffect(() => {
@@ -271,6 +291,7 @@ export default function TransactionForm({
         usersToAssociate.length > 0 ? usersToAssociate : undefined
       )
       trackTestTransaction(created.id_transaction)
+      onCreated?.()
       if (transactionType === 'Expense') checkBudgetAlerts(idFamily)
 
       // Reparto personalizado del ingreso entre partidas (si no se toca, se calcula con el presupuesto y no se guarda)

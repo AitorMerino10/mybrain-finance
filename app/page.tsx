@@ -8,7 +8,7 @@ import { isMyBrainFamilyAllowed } from '@/lib/mybrain/access'
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: { family?: string; action?: string }
+  searchParams: { family?: string; action?: string; pending?: string }
 }) {
   const supabase = createClient()
   const {
@@ -59,6 +59,7 @@ export default async function HomePage({
               idUser={user.id}
               firstName={firstName}
               showNewTransaction={searchParams.action === 'new-transaction'}
+              openPendingId={searchParams.pending}
             />
           </div>
         </div>

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import CategoryManager from '@/components/CategoryManager'
 import NotificationsSettings from '@/components/NotificationsSettings'
+import MobilePaymentsSettings from '@/components/MobilePaymentsSettings'
 import SettingsMenu, { type SettingsSection } from '@/components/SettingsMenu'
 import HelpTooltip from '@/components/HelpTooltip'
 import { getUserFamilies } from '@/lib/family'
@@ -41,7 +42,8 @@ export default async function SettingsPage({
     redirect('/unauthorized')
   }
 
-  const section: SettingsSection = searchParams.section === 'notificaciones' ? 'notificaciones' : 'verticales'
+  const section: SettingsSection =
+    searchParams.section === 'notificaciones' ? 'notificaciones' : searchParams.section === 'pagos' ? 'pagos' : 'verticales'
   const showAdmin = isAppAdmin(user.id, userData?.ds_email || null)
 
   return (
@@ -78,7 +80,13 @@ export default async function SettingsPage({
             <SettingsMenu idFamily={selectedFamilyId} active={section} showAdmin={showAdmin} />
 
             <div className="rounded-2xl bg-white p-4 sm:p-6 shadow-sm border border-gray-100">
-              {section === 'notificaciones' ? <NotificationsSettings /> : <CategoryManager idFamily={selectedFamilyId} />}
+              {section === 'notificaciones' ? (
+                <NotificationsSettings />
+              ) : section === 'pagos' ? (
+                <MobilePaymentsSettings idFamily={selectedFamilyId} />
+              ) : (
+                <CategoryManager idFamily={selectedFamilyId} />
+              )}
             </div>
           </div>
         </div>

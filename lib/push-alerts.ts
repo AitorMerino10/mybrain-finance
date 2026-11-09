@@ -214,6 +214,13 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
     return { budget, spent }
   }
 
+  // Gastos pendientes de completar (para recordarlos en el aviso diario)
+  const pendingCount = new Map<string, number>()
+  if (sendDaily) {
+    const { data: pendingRows } = await admin.from('pml_pending_transaction').select('id_user').eq('id_family', scope.idFamily)
+    ;(pendingRows || []).forEach((row) => pendingCount.set(row.id_user, (pendingCount.get(row.id_user) || 0) + 1))
+  }
+
   const alerts: Alert[] = []
 
   for (const idUser of userIds) {
@@ -281,14 +288,17 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
     if (sendDaily && pref.dailyReminder) {
       const todays = userShares.filter((row) => row.date === today)
       const total = todays.reduce((sum, row) => sum + row.amount, 0)
+      const pendingNote = pendingCount.get(idUser)
+        ? ` Tienes ${pendingCount.get(idUser)} ${pendingCount.get(idUser) === 1 ? 'gasto pendiente' : 'gastos pendientes'} de completar.`
+        : ''
       alerts.push({
         idUser,
         key: `daily:${today}`,
         title: '¿Has metido los gastos de hoy?',
         body:
-          todays.length > 0
+          (todays.length > 0
             ? `Hoy llevas ${todays.length} ${todays.length === 1 ? 'gasto' : 'gastos'} (${formatCurrency(total)}). ¿Se te ha olvidado alguno?`
-            : 'Hoy no has registrado ningún gasto. Añádelos antes de acostarte para que las cuentas cuadren.',
+            : 'Hoy no has registrado ningún gasto. Añádelos antes de acostarte para que las cuentas cuadren.') + pendingNote,
         url: `/?family=${scope.idFamily}&action=new-transaction`,
         tag: 'daily-reminder',
       })

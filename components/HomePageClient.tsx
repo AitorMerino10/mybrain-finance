@@ -9,12 +9,15 @@ import TransactionForm from './TransactionForm'
 import type { TransactionTypeName } from '@/types/transactions'
 import { formatCurrency, formatDate } from '@/lib/format'
 import LocalModeBanner from './LocalModeBanner'
+import { deletePendingTransaction, getPendingTransactions, type PendingTransaction } from '@/lib/pending'
 
 interface HomePageClientProps {
   idFamily: string
   idUser: string
   firstName: string
   showNewTransaction?: boolean
+  /** Gasto pendiente que se abre directamente (viene de la notificación) */
+  openPendingId?: string
 }
 
 // Helper para detectar prefers-reduced-motion
@@ -39,6 +42,7 @@ export default function HomePageClient({
   idUser,
   firstName,
   showNewTransaction = false,
+  openPendingId,
 }: HomePageClientProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -46,6 +50,51 @@ export default function HomePageClient({
   const [previousMonthBenefit, setPreviousMonthBenefit] = useState(0)
   const [showTransactionForm, setShowTransactionForm] = useState(showNewTransaction)
   const [selectedTransactionType, setSelectedTransactionType] = useState<TransactionTypeName>('Expense')
+  const [pending, setPending] = useState<PendingTransaction[]>([])
+  const [activePending, setActivePending] = useState<PendingTransaction | null>(null)
+
+  const closeForm = () => {
+    setShowTransactionForm(false)
+    setSelectedTransactionType('Expense')
+    setActivePending(null)
+    router.push(`/?family=${idFamily}`)
+  }
+
+  const removePending = async (item: PendingTransaction) => {
+    const label = item.ds_merchant ? `${item.ds_merchant} (${formatCurrency(item.ft_amount)})` : formatCurrency(item.ft_amount)
+    if (!window.confirm(`¿Borrar el gasto pendiente de ${label}? No se ha contado en ningún número.`)) return
+    try {
+      await deletePendingTransaction(supabase, item.id_pending_transaction)
+      setPending((prev) => prev.filter((row) => row.id_pending_transaction !== item.id_pending_transaction))
+    } catch (error) {
+      console.error('No se pudo borrar el pendiente:', error)
+    }
+  }
+
+  const startPending = (item: PendingTransaction) => {
+    setActivePending(item)
+    setSelectedTransactionType('Expense')
+    setShowTransactionForm(true)
+  }
+
+  // Gastos pendientes (los que llegan desde el móvil)
+  useEffect(() => {
+    let cancelled = false
+    getPendingTransactions(supabase, idFamily, idUser).then((rows) => {
+      if (cancelled) return
+      setPending(rows)
+      // Si vienes de la notificación, se abre ese gasto directamente
+      const target = openPendingId ? rows.find((row) => row.id_pending_transaction === openPendingId) : null
+      if (target) {
+        setActivePending(target)
+        setSelectedTransactionType('Expense')
+        setShowTransactionForm(true)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [idFamily, idUser, openPendingId])
 
   // Sincronizar con prop
   useEffect(() => {
@@ -148,13 +197,9 @@ export default function HomePageClient({
       <div className="space-y-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-gray-900">Nueva Transacción</h2>
+            <h2 className="text-xl font-bold text-gray-900">{activePending ? 'Completar gasto' : 'Nueva Transacción'}</h2>
             <button
-              onClick={() => {
-                setShowTransactionForm(false)
-                setSelectedTransactionType('Expense')
-                router.push(`/?family=${idFamily}`)
-              }}
+              onClick={closeForm}
               className="p-2 text-gray-500 hover:text-gray-700"
               aria-label="Cerrar"
             >
@@ -227,22 +272,29 @@ export default function HomePageClient({
 
             {/* Formulario */}
             <TransactionForm
-            key={currentType} // Key para forzar re-render cuando cambia el tipo
+            key={`${currentType}-${activePending?.id_pending_transaction || 'new'}`} // Key para forzar re-render cuando cambia el tipo o el pendiente
             transactionType={currentType}
             idFamily={idFamily}
             idUser={idUser}
+            initialValues={
+              activePending
+                ? { amount: activePending.ft_amount, date: activePending.dt_date, comments: activePending.ds_merchant }
+                : undefined
+            }
+            onCreated={() => {
+              // El gasto ya existe de verdad: el pendiente deja de hacer falta
+              if (activePending) {
+                deletePendingTransaction(supabase, activePending.id_pending_transaction).catch((error) =>
+                  console.error('No se pudo borrar el pendiente completado:', error)
+                )
+              }
+            }}
             onSuccess={() => {
-              setShowTransactionForm(false)
-              setSelectedTransactionType('Expense')
-              router.push(`/?family=${idFamily}`)
+              closeForm()
               // Recargar datos
               setTimeout(() => window.location.reload(), 100)
             }}
-            onCancel={() => {
-              setShowTransactionForm(false)
-              setSelectedTransactionType('Expense')
-              router.push(`/?family=${idFamily}`)
-            }}
+            onCancel={closeForm}
           />
           </div>
         </div>
@@ -262,6 +314,44 @@ export default function HomePageClient({
       </div>
 
       <LocalModeBanner />
+
+      {pending.length > 0 && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-bold text-amber-900">
+              📲 Pendientes de completar ({pending.length})
+            </h2>
+            <p className="text-xs text-amber-800/80">No cuentan en tus números hasta que los completes</p>
+          </div>
+          <ul className="divide-y divide-amber-100 rounded-xl bg-white">
+            {pending.map((item) => (
+              <li key={item.id_pending_transaction} className="flex items-center gap-3 px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-gray-900">{item.ds_merchant || 'Gasto sin nombre'}</p>
+                  <p className="text-xs text-gray-500">
+                    {formatCurrency(item.ft_amount)} · {new Date(`${item.dt_date}T00:00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                    {item.ds_card ? ` · ${item.ds_card}` : ''}
+                  </p>
+                </div>
+                <button
+                  onClick={() => startPending(item)}
+                  className="shrink-0 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
+                >
+                  Completar
+                </button>
+                <button
+                  onClick={() => removePending(item)}
+                  className="shrink-0 rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                  aria-label="Borrar pendiente"
+                  title="Borrar"
+                >
+                  🗑
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Tarjetas de Beneficio */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6">
