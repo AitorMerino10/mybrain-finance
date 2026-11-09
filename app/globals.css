@@ -7,13 +7,41 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* La app solo tiene diseño claro: así el modo oscuro del móvil no deja texto gris claro sobre fondo blanco */
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  input,
+  select,
+  textarea {
+    color: #111827;
   }
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+  }
+  /* iOS: la fecha se salía de la pantalla por su ancho propio */
+  input[type='date'],
+  input[type='month'],
+  input[type='time'] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 3rem;
+    text-align: left;
+  }
+  input[type='date']::-webkit-date-and-time-value,
+  input[type='month']::-webkit-date-and-time-value {
+    text-align: left;
+    min-height: 1.25rem;
+  }
+}
+
+/* Mientras hay un formulario de transacción abierto, la barra de abajo del móvil no pinta nada */
+html[data-hide-bottom-nav='true'] .app-bottom-nav {
+  display: none;
 }
 
 body {

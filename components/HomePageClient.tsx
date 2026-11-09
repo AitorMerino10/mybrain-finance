@@ -83,6 +83,15 @@ export default function HomePageClient({
     setShowTransactionForm(true)
   }
 
+  // Con el formulario abierto, la barra inferior del móvil (Analítica / + / Config) no tiene sentido
+  useEffect(() => {
+    if (showTransactionForm) document.documentElement.dataset.hideBottomNav = 'true'
+    else delete document.documentElement.dataset.hideBottomNav
+    return () => {
+      delete document.documentElement.dataset.hideBottomNav
+    }
+  }, [showTransactionForm])
+
   // Gastos pendientes (los que llegan desde el móvil)
   useEffect(() => {
     let cancelled = false
@@ -201,8 +210,8 @@ export default function HomePageClient({
 
     return (
       <div className="space-y-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <div className="mb-6 flex items-center justify-between">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
+          <div className="mb-4 sm:mb-6 flex items-center justify-between">
             <h2 className="text-xl font-bold text-gray-900">{activePending ? 'Completar gasto' : 'Nueva Transacción'}</h2>
             <button
               onClick={closeForm}
@@ -228,8 +237,8 @@ export default function HomePageClient({
           {/* Radio buttons tipo card y formulario */}
           <div>
             {/* Radio buttons tipo card */}
-            <div className="mb-8">
-              <label className="block text-sm font-semibold text-gray-700 mb-4">
+            <div className="mb-6 sm:mb-8">
+              <label className="block text-sm font-semibold text-gray-700 mb-3 sm:mb-4">
                 Tipo de transacción *
               </label>
               <div className="grid grid-cols-2 gap-4">

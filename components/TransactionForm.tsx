@@ -381,6 +381,29 @@ export default function TransactionForm({
           </div>
         )}
 
+        {/* Sitio del pago (viene del atajo del móvil) */}
+        {initialValues?.locationUrl && (
+          <a
+            href={initialValues.locationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900"
+          >
+            <span className="text-xl" aria-hidden>
+              📍
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">Sitio del pago</span>
+              <span className="block truncate text-xs text-sky-800/80">
+                {initialValues.comments ? `${initialValues.comments} · ` : ''}Ver en Google Maps
+              </span>
+            </span>
+            <span className="text-sky-700" aria-hidden>
+              ↗
+            </span>
+          </a>
+        )}
+
         {/* Personas afectadas primero - solo si hay más de uno */}
         {familyMembers.length > 1 && (
           <div className="space-y-2">
@@ -522,7 +545,7 @@ export default function TransactionForm({
                 }
               }}
               disabled={loading}
-              className="block w-full pl-12 pr-4 py-4 text-2xl font-bold border-2 border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white transition-all duration-200 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+              className="block w-full pl-12 pr-4 py-4 text-2xl font-bold border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white transition-all duration-200 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
               placeholder="0.00"
               required
             />
@@ -741,7 +764,7 @@ export default function TransactionForm({
         )}
 
         {/* Grid para fecha y mes declarado */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 [&>div]:min-w-0">
           <div className="space-y-2">
             <label
               htmlFor="date"
@@ -763,7 +786,7 @@ export default function TransactionForm({
                   setFormData((prev) => ({ ...prev, dt_date: e.target.value }))
                 }
                 disabled={loading}
-                className="block w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 shadow-sm hover:border-gray-300 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
+                className="block w-full min-w-0 max-w-full appearance-none pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 shadow-sm hover:border-gray-300 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                 required
               />
             </div>
@@ -801,7 +824,7 @@ export default function TransactionForm({
                   }
                 }}
                 disabled={loading}
-                className="block w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 shadow-sm hover:border-gray-300 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
+                className="block w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 shadow-sm hover:border-gray-300 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                 placeholder="01-2024"
                 maxLength={7}
                 required
@@ -873,7 +896,7 @@ export default function TransactionForm({
               }
               disabled={loading}
               rows={3}
-              className="block w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 shadow-sm hover:border-gray-300 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500 resize-none"
+              className="block w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 shadow-sm hover:border-gray-300 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500 resize-none"
               placeholder="Notas adicionales sobre esta transacción..."
             />
           </div>

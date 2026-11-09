@@ -255,7 +255,7 @@ export default function Navigation({
       </aside>
 
       {/* Mobile Navigation - Bottom Bar */}
-      <div className="fixed inset-x-0 bottom-0 z-50 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div className="app-bottom-nav fixed inset-x-0 bottom-0 z-50 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="bg-[#EAF1F6] backdrop-blur-sm border-t border-gray-200/50 shadow-lg">
           <div className="flex h-14 items-center justify-around px-1">
             <Link
