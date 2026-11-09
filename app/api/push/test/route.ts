@@ -17,8 +17,8 @@ export async function POST() {
 
   try {
     const delivered = await sendPushToUser(admin, user.id, {
-      title: 'MyBrain finance',
-      body: 'Las notificaciones funcionan correctamente 🎉',
+      title: 'Notificaciones activadas 🎉',
+      body: 'Todo listo: te avisaré de tus gastos y presupuestos.',
       url: '/',
       tag: 'test',
     })

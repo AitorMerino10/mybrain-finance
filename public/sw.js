@@ -11,7 +11,7 @@ self.addEventListener('push', (event) => {
   } catch (error) {
     data = { body: event.data ? event.data.text() : '' }
   }
-  const title = data.title || 'MyBrain finance'
+  const title = data.title || 'Aviso'
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || '',
