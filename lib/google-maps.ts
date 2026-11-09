@@ -13,10 +13,11 @@ export function loadGoogleMaps(): Promise<void> {
   if (loader) return loader
 
   loader = new Promise<void>((resolve, reject) => {
+    // Con loading=async la API solo está lista cuando Google llama a `callback` (no basta con el onload del script)
+    ;(window as unknown as Record<string, unknown>).__mybrainMapsReady = () => resolve()
     const script = document.createElement('script')
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&v=weekly&loading=async&language=es&region=ES`
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&v=weekly&loading=async&language=es&region=ES&callback=__mybrainMapsReady`
     script.async = true
-    script.onload = () => resolve()
     script.onerror = () => {
       loader = null
       reject(new Error('No se pudo cargar Google Maps'))
