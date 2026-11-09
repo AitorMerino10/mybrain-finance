@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { fetchCalculatorTransactions, formatMoney, type CalcTransaction } from '@/lib/budget-calculator'
+import { fetchCalculatorTransactions, formatMoney, getScopedAmount, type CalcTransaction } from '@/lib/budget-calculator'
+import { getFamilyMembers, type FamilyMember } from '@/lib/family'
+import { supabase } from '@/lib/supabase'
 import { getTodayISOString } from '@/lib/date-utils'
 import { googleMapsUrl } from '@/lib/places'
 import { isGoogleMapsConfigured, loadGoogleMaps } from '@/lib/google-maps'
@@ -106,13 +108,16 @@ function shortDate(value: string) {
   return new Date(`${value}T00:00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export default function PlacesPageClient({ idFamily }: { idFamily: string }) {
+export default function PlacesPageClient({ idFamily, idUser }: { idFamily: string; idUser: string }) {
   const today = getTodayISOString()
   const [transactions, setTransactions] = useState<CalcTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>('month')
   const [categoryId, setCategoryId] = useState('')
+  // '' = todos los gastos de la familia; si no, el id de la persona
+  const [personId, setPersonId] = useState('')
+  const [members, setMembers] = useState<FamilyMember[]>([])
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const [mapError, setMapError] = useState<string | null>(null)
@@ -133,7 +138,20 @@ export default function PlacesPageClient({ idFamily }: { idFamily: string }) {
     }
   }, [idFamily])
 
-  const expenses = useMemo(() => transactions.filter((tx) => tx.type === 'Expense'), [transactions])
+  useEffect(() => {
+    getFamilyMembers(supabase, idFamily)
+      .then(setMembers)
+      .catch(() => setMembers([]))
+  }, [idFamily])
+
+  // Gastos de todos, o los de una persona con lo que le corresponde de cada uno (si se reparte, solo su parte)
+  const expenses = useMemo(() => {
+    const all = transactions.filter((tx) => tx.type === 'Expense')
+    if (!personId) return all
+    return all
+      .map((tx) => ({ ...tx, ft_amount: getScopedAmount(tx, personId) }))
+      .filter((tx) => tx.ft_amount > 0)
+  }, [transactions, personId])
 
   const categories = useMemo(() => {
     const map = new Map<string, string>()
@@ -295,6 +313,24 @@ export default function PlacesPageClient({ idFamily }: { idFamily: string }) {
       </div>
 
       <div className="mb-4 space-y-3">
+        {members.length > 1 && (
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            <div className="flex w-max gap-2 sm:w-auto sm:flex-wrap" role="group" aria-label="Persona">
+              <button onClick={() => setPersonId('')} className={chip(personId === '')}>
+                👪 Todos
+              </button>
+              {[...members]
+                .sort((a, b) => Number(b.id_user === idUser) - Number(a.id_user === idUser))
+                .map((member) => (
+                  <button key={member.id_user} onClick={() => setPersonId(member.id_user)} className={chip(personId === member.id_user)}>
+                    {member.id_user === idUser ? '🙋 ' : ''}
+                    {member.ds_user || member.ds_email.split('@')[0]}
+                    {member.id_user === idUser ? ' (tú)' : ''}
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
         <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <div className="flex w-max gap-2 sm:w-auto sm:flex-wrap">
             {PERIODS.map((item) => (

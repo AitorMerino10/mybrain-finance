@@ -14,7 +14,6 @@ const prefersReducedMotion = () => {
 }
 
 const SIDEBAR_EMOJIS: Record<string, string> = {
-  brain: '🧠',
   plus: '➕',
   chart: '📊',
   budget: '📖',
@@ -28,6 +27,7 @@ interface NavigationProps {
   userData: { ds_user: string | null; ds_email: string | null } | null
   families: Array<{ id_family: string; ds_family: string | null }>
   currentFamilyId: string
+  /** Ya no se enseña el acceso a MyBrain; se mantiene para no tocar las páginas que lo pasan */
   showMyBrainLink?: boolean
 }
 
@@ -37,7 +37,6 @@ export default function Navigation({
   userData,
   families,
   currentFamilyId,
-  showMyBrainLink = false,
 }: NavigationProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -50,9 +49,6 @@ export default function Navigation({
   const familyMenuRef = useRef<HTMLDivElement>(null)
 
   const navigationItems = [
-    ...(showMyBrainLink
-      ? [{ name: 'MyBrain', href: '/mybrain', icon: 'brain', preserveFamilyQuery: false }]
-      : []),
     { name: 'Nueva Transacción', href: '/', icon: 'plus', isNewTransaction: true },
     { name: 'Analítica', href: '/analytics', icon: 'chart' },
     { name: 'Presupuestos', href: '/budgets', icon: 'budget' },
@@ -65,7 +61,7 @@ export default function Navigation({
 
   const isActive = (href: string) =>
     pathname === href || (href === '/budgets' && pathname.startsWith('/budgets/'))
-  const isMyBrainActive = pathname.startsWith('/mybrain')
+  const isPlacesActive = pathname.startsWith('/places')
   // En móvil Presupuestos, Ayuda y Admin cuelgan del menú de Configuración
   const isConfigActive = ['/settings', '/budgets', '/help', '/admin'].some((path) => pathname === path || pathname.startsWith(`${path}/`))
 
@@ -232,11 +228,11 @@ export default function Navigation({
                   href:
                     item.href === '/' && item.isNewTransaction
                       ? `/?family=${currentFamilyId}&action=new-transaction`
-                      : `${item.href}${item.preserveFamilyQuery === false ? '' : currentFamilyId ? `?family=${currentFamilyId}` : ''}`,
+                      : `${item.href}${currentFamilyId ? `?family=${currentFamilyId}` : ''}`,
                   emoji: SIDEBAR_EMOJIS[item.icon] ?? '•',
                   active:
                     (item.href === '/' && item.isNewTransaction && searchParams?.get('action') === 'new-transaction') ||
-                    (item.href === '/mybrain' ? isMyBrainActive : item.href !== '/' && isActive(item.href)),
+                    item.href !== '/' && isActive(item.href),
                 })),
               ].map((item) => (
                 <li key={item.name}>
@@ -324,23 +320,22 @@ export default function Navigation({
             className="flex flex-1 items-center gap-2.5 text-white"
             aria-label="MyBrain finance: ir al inicio"
           >
-            <span className="block h-9 w-9 shrink-0 rounded-[10px] ring-1 ring-white/15">
-              <AppLogoSvg size={36} rounded idSuffix="-topbar" />
-            </span>
+            {/* Sin esquinas ni borde: el logo comparte el azul de la franja y se ve todo seguido */}
+            <AppLogoSvg size={40} idSuffix="-topbar" />
             <span className="text-lg font-bold leading-none">MyBrain</span>
           </Link>
 
-          {showMyBrainLink && (
-            <Link
-              href="/mybrain"
-              className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors ml-2 ${
-                isMyBrainActive ? 'bg-white text-slate-900' : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
-              aria-label="MyBrain"
-            >
-              <span className="text-lg leading-none">🧠</span>
-            </Link>
-          )}
+          {/* Mapa de gastos (en móvil no hay otro acceso) */}
+          <Link
+            href={`/places${currentFamilyId ? `?family=${currentFamilyId}` : ''}`}
+            className={`ml-2 flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+              isPlacesActive ? 'bg-white text-slate-900' : 'bg-white/10 text-white hover:bg-white/20'
+            }`}
+            aria-label="Mapa de gastos"
+            aria-current={isPlacesActive ? 'page' : undefined}
+          >
+            <span className="text-lg leading-none">🗺️</span>
+          </Link>
           {/* Profile Button - Mobile */}
           <div className="relative ml-3" ref={profileMenuRef}>
             <button
@@ -415,19 +410,6 @@ export default function Navigation({
             <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
               <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1s.4-1 1-1h12c.6 0 1 .4 1 1z"/>
             </svg>
-          </Link>
-        )}
-        {showMyBrainLink && (
-          <Link
-            href="/mybrain"
-            className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors ${
-              isMyBrainActive
-                ? 'bg-white text-slate-900'
-                : 'bg-slate-900 text-white hover:bg-slate-800'
-            }`}
-            aria-label="MyBrain"
-          >
-            <span className="text-lg leading-none">🧠</span>
           </Link>
         )}
         <Link

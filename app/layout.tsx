@@ -2,12 +2,14 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SyncUserProfile } from "@/components/sync-user-profile";
 import PwaRegister from "@/components/PwaRegister";
+import SplashScreen from "@/components/SplashScreen";
+import { splashStartupImages } from "@/lib/app-splash";
 
 export const metadata: Metadata = {
   title: "MyBrain finance",
   description: "Gestión inteligente de finanzas personales y familiares",
   applicationName: "MyBrain finance",
-  appleWebApp: { capable: true, title: "MyBrain", statusBarStyle: "black" },
+  appleWebApp: { capable: true, title: "MyBrain", statusBarStyle: "black", startupImage: splashStartupImages },
   icons: { icon: "/app-icon/rounded/192", apple: "/app-icon/180" },
   formatDetection: { telephone: false },
 };
@@ -33,6 +35,7 @@ export default function RootLayout({
               "try{if(localStorage.getItem('mybrain:sidebar')==='collapsed')document.documentElement.dataset.sidebar='collapsed'}catch(e){}",
           }}
         />
+        <SplashScreen />
         <SyncUserProfile />
         <PwaRegister />
         {children}

@@ -35,7 +35,7 @@ export default async function PlacesPage({ searchParams }: { searchParams: { fam
 
       <main className="app-main">
         <div className="pt-4 sm:pt-6 pb-6 lg:pb-8 lg:pt-12">
-          <PlacesPageClient idFamily={selectedFamilyId} />
+          <PlacesPageClient idFamily={selectedFamilyId} idUser={user.id} />
         </div>
       </main>
     </div>
