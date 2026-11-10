@@ -97,7 +97,9 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
 
   const sendDaily = scope.scheduled && (scope.force === 'daily' || hour === DAILY_REMINDER_HOUR)
   const sendClose = scope.scheduled && (scope.force === 'close' || (today.slice(8, 10) === '01' && hour >= MONTH_CLOSE_HOUR))
-  const sendPending = scope.scheduled && (scope.force === 'pending' || hour === PENDING_REMINDER_HOUR)
+  // El aviso de pendientes sale en la primera ejecución a partir de las 20:00 (y antes del recordatorio de las 23:00):
+  // así, si GitHub retrasa o se salta una ejecución, no se pierde el día. No se repite: queda apuntado en pml_log_push_sent.
+  const sendPending = scope.scheduled && (scope.force === 'pending' || (hour >= PENDING_REMINDER_HOUR && hour < DAILY_REMINDER_HOUR))
   // Tarea programada fuera de hora: no hay nada que enviar
   if (scope.scheduled && !sendDaily && !sendClose && !sendPending) return []
 

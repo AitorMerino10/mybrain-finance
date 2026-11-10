@@ -8,9 +8,9 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 /**
- * Tarea que se lanza cada hora (ver .github/workflows/notify.yml). Según la hora de Madrid:
+ * Tarea que se lanza cada 10 minutos (ver .github/workflows/notify.yml). Según la hora de Madrid:
  * - crea los gastos pendientes de los gastos recurrentes que toca cobrar hoy (a partir de las 8:00) y avisa
- * - envía el aviso de gastos pendientes sin completar (20:00)
+ * - envía el aviso de gastos pendientes sin completar (primera ejecución desde las 20:00)
  * - envía el recordatorio diario de gastos (23:00)
  * - envía el aviso de cerrar el mes (día 1, a partir de las 9:00)
  * `?force=daily|close|pending` fuerza ese aviso ahora (para probar).
