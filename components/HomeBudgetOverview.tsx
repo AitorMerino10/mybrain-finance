@@ -9,6 +9,7 @@ import {
   buildPartidaStatus,
   buildSpendTree,
   monthLabel,
+  partidaCoverageStart,
   statusFromRatio,
   type BudgetAnalyticsData,
   type GoalView,
@@ -37,6 +38,9 @@ import {
   StatusPill,
   type Accent,
 } from './budget-analytics/visuals'
+
+const ALL_MONTHS = '__all__'
+const EXPENSES_PREVIEW = 12
 
 const STATUS_ORDER: Record<Status, number> = { over: 0, warning: 1, ok: 2 }
 
@@ -73,7 +77,7 @@ function HomePartidaCard({
   saved?: PartidaSavedInfo | null
 }) {
   const accent = accentForPartida(data, row.idBudgetType)
-  const windowMonths = row.periodKind === 'period' ? row.windowMonths : row.periodicity === 'annual' ? ytdMonths : [nowMonth]
+  const windowMonths = row.windowMonths.length > 0 && row.periodicity === 'annual' ? row.windowMonths : row.periodicity === 'annual' ? ytdMonths : [nowMonth]
   const periodLabel =
     row.periodKind === 'period' ? 'en lo que va del periodo' : row.periodicity === 'annual' ? 'en lo que va de año' : 'este mes'
 
@@ -116,11 +120,27 @@ function UniquePartidaDetail({
   idBudgetType: string
   nowMonth: string
 }) {
-  const expenses = data.transactions
-    .filter((tx) => tx.type === 'Expense' && tx.ds_month_declared === nowMonth && resolveBudgetTypeId(tx, data.defaults) === idBudgetType)
-    .map((tx) => ({ tx, amount: getScopedAmount(tx, idUser) }))
-    .filter((item) => item.amount)
-    .sort((a, b) => b.tx.dt_date.localeCompare(a.tx.dt_date))
+  // Por defecto, los gastos de este mes; se puede elegir otro mes o ver todos los del periodo
+  const periodMonths = saved.months.map((item) => item.month)
+  const [selected, setSelected] = useState<string>(nowMonth)
+  const [showAll, setShowAll] = useState(false)
+  const chosenMonths = selected === ALL_MONTHS ? periodMonths : [selected]
+  const allExpenses = useMemo(
+    () =>
+      data.transactions
+        .filter((tx) => tx.type === 'Expense' && resolveBudgetTypeId(tx, data.defaults) === idBudgetType)
+        .map((tx) => ({ tx, amount: getScopedAmount(tx, idUser) }))
+        .filter((item) => item.amount)
+        .sort((a, b) => b.tx.dt_date.localeCompare(a.tx.dt_date)),
+    [data, idUser, idBudgetType]
+  )
+  const monthsKey = chosenMonths.join(',')
+  const expenses = useMemo(() => {
+    const set = new Set(monthsKey ? monthsKey.split(',') : [])
+    return allExpenses.filter((item) => set.has(item.tx.ds_month_declared))
+  }, [allExpenses, monthsKey])
+  const expensesTotal = expenses.reduce((sum, item) => sum + item.amount, 0)
+  const visibleExpenses = showAll ? expenses : expenses.slice(0, EXPENSES_PREVIEW)
   let running = saved.opening
 
   return (
@@ -160,12 +180,46 @@ function UniquePartidaDetail({
       </div>
 
       <div>
-        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Gastos de {monthLabel(nowMonth, true).toLowerCase()}</p>
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {[nowMonth, ...[...periodMonths].reverse().filter((month) => month !== nowMonth)].filter((month) => month === nowMonth || periodMonths.includes(month)).map((month) => (
+            <button
+              key={month}
+              type="button"
+              onClick={() => {
+                setSelected(month)
+                setShowAll(false)
+              }}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium capitalize transition-colors ${
+                selected === month ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {monthLabel(month)}
+            </button>
+          ))}
+          {periodMonths.length > 1 && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelected(ALL_MONTHS)
+                setShowAll(false)
+              }}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                selected === ALL_MONTHS ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              Todos
+            </button>
+          )}
+        </div>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          {selected === ALL_MONTHS ? 'Todos los gastos del periodo' : `Gastos de ${monthLabel(selected, true).toLowerCase()}`}
+          {expenses.length > 0 && <span className="ml-1.5 font-medium normal-case tracking-normal text-slate-400">· {expenses.length} · {formatMoney(expensesTotal)}</span>}
+        </p>
         {expenses.length === 0 ? (
-          <p className="text-xs text-slate-400">Sin gastos este mes.</p>
+          <p className="text-xs text-slate-400">{selected === ALL_MONTHS ? 'Sin gastos en el periodo.' : 'Sin gastos este mes.'}</p>
         ) : (
           <ul className="divide-y divide-slate-100 rounded-xl border border-slate-100">
-            {expenses.map(({ tx, amount }) => (
+            {visibleExpenses.map(({ tx, amount }) => (
               <li key={tx.id_transaction} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
                 <span className="min-w-0">
                   <span className="block truncate font-medium text-slate-800">{tx.ds_comments || tx.ds_subcategory || tx.ds_category}</span>
@@ -183,6 +237,13 @@ function UniquePartidaDetail({
                 </span>
               </li>
             ))}
+            {expenses.length > EXPENSES_PREVIEW && (
+              <li className="px-3 py-2">
+                <button type="button" onClick={() => setShowAll((value) => !value)} className="text-xs font-semibold text-[#0d9488] hover:underline">
+                  {showAll ? 'Ver menos' : `Ver ${expenses.length - EXPENSES_PREVIEW} gastos más`}
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </div>
@@ -207,7 +268,9 @@ function HomePartidaTree({
   periodLabel: string
   partial: boolean
 }) {
-  const tree = useMemo(() => buildSpendTree(data, idUser, { months, idBudgetType }), [data, idUser, months, idBudgetType])
+  // La referencia ("tu media de los meses anteriores") solo usa meses en los que la partida ya tenía presupuesto
+  const baselineFrom = useMemo(() => partidaCoverageStart(data, idUser, idBudgetType), [data, idUser, idBudgetType])
+  const tree = useMemo(() => buildSpendTree(data, idUser, { months, idBudgetType, baselineFrom }), [data, idUser, months, idBudgetType, baselineFrom])
   return <SpendTreeView tree={tree} accent={accent} periodLabel={periodLabel} partialMonth={partial} />
 }
 

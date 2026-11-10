@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from 'react'
 import {
+  budgetCoverageStart,
   budgetDeadline,
   budgetPeriodLabel,
   buildPartidaSeries,
   buildSpendTree,
   monthLabel,
+  partidaCoverageStart,
   statusFromRatio,
   type BudgetAnalyticsData,
   type PartidaSeries,
@@ -28,6 +30,7 @@ function PartidaTree({
   idBudgetType,
   accent,
   periodLabel,
+  baselineFrom,
 }: {
   data: BudgetAnalyticsData
   scopeUserId: string | null
@@ -35,8 +38,12 @@ function PartidaTree({
   idBudgetType: string
   accent: Accent
   periodLabel: string
+  baselineFrom: string | null
 }) {
-  const tree = useMemo(() => buildSpendTree(data, scopeUserId, { months, idBudgetType }), [data, scopeUserId, months, idBudgetType])
+  const tree = useMemo(
+    () => buildSpendTree(data, scopeUserId, { months, idBudgetType, baselineFrom }),
+    [data, scopeUserId, months, idBudgetType, baselineFrom]
+  )
   return <SpendTreeView tree={tree} accent={accent} periodLabel={periodLabel} partialMonth={months.length === 1 && months[0] === currentMonthKey()} />
 }
 
@@ -193,6 +200,7 @@ export default function BudgetsPane({
                     idBudgetType={item.idBudgetType}
                     accent={accent}
                     periodLabel={windowLabel}
+                    baselineFrom={item.isUnassigned ? budgetCoverageStart(data, scopeUserId) : partidaCoverageStart(data, scopeUserId, item.idBudgetType)}
                   />
                 </PartidaCard>
               )

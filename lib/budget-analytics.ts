@@ -475,7 +475,7 @@ export function buildPartidaStatus(
         paceFraction: (now.getMonth() + daysFraction(now)) / 12,
         windowLabel: `Año ${year}`,
         periodKind: 'year',
-        windowMonths: [],
+        windowMonths: monthRange(windowStart, nowMonth),
         periodicityLabel: 'Anual',
       })
       continue
@@ -689,6 +689,15 @@ export function budgetCoverageStart(data: BudgetAnalyticsData, scopeUserId: stri
   return months[0] || null
 }
 
+/** Primer mes en el que una partida tuvo presupuesto para la persona (o la familia). null si nunca lo ha tenido. */
+export function partidaCoverageStart(data: BudgetAnalyticsData, scopeUserId: string | null, idBudgetType: string): string | null {
+  const months = data.budgets
+    .filter((budget) => budget.id_budget_type === idBudgetType && (!scopeUserId || budget.id_user === scopeUserId))
+    .map((budget) => dateToMonth(budget.dt_start_month))
+    .sort()
+  return months[0] || null
+}
+
 // ==================== RANGO DE MESES ====================
 
 export type RangePreset = '6m' | '12m' | 'year' | 'all' | 'custom'
@@ -758,12 +767,21 @@ export type SpendTree = {
 export function buildSpendTree(
   data: BudgetAnalyticsData,
   scopeUserId: string | null,
-  params: { months: string[]; idBudgetType: string | null; baselineCount?: number }
+  params: {
+    months: string[]
+    idBudgetType: string | null
+    baselineCount?: number
+    /** Los meses de referencia anteriores a este no se usan (antes de que existiera el presupuesto no hay nada con qué comparar) */
+    baselineFrom?: string | null
+  }
 ): SpendTree {
   const { months, idBudgetType } = params
   const baselineCount = params.baselineCount ?? 3
   const monthSet = new Set(months)
-  const baselineMonths = months.length > 0 ? monthRange(addMonths(months[0], -baselineCount), addMonths(months[0], -1)) : []
+  const baselineMonths =
+    months.length > 0
+      ? monthRange(addMonths(months[0], -baselineCount), addMonths(months[0], -1)).filter((month) => !params.baselineFrom || month >= params.baselineFrom)
+      : []
   const baselineSet = new Set(baselineMonths)
 
   type Acc = {
