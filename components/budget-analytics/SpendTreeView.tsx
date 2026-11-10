@@ -1,33 +1,35 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import type { SpendTree, SpendTreeNode } from '@/lib/budget-analytics'
+import { monthLabel, statusFromRatio, type SpendTree, type SpendTreeNode } from '@/lib/budget-analytics'
 import { formatMoney } from '@/lib/budget-calculator'
-import { DeltaPill, Icon, type Accent } from './visuals'
+import { Icon, type Accent } from './visuals'
 import { EditTransactionButton } from './TransactionEditProvider'
 
 const TX_PREVIEW = 6
+
+const RATIO_TEXT = { ok: 'text-emerald-700', warning: 'text-amber-700', over: 'text-rose-600' } as const
 
 function formatDay(date: string) {
   const [, month, day] = date.slice(0, 10).split('-')
   return `${day}/${month}`
 }
 
-function Insight({ tone, title, items }: { tone: 'up' | 'down'; title: string; items: Array<{ label: string; delta: number }> }) {
-  if (items.length === 0) return null
-  return (
-    <div className={`rounded-xl p-3 sm:p-4 ${tone === 'up' ? 'bg-rose-50/70' : 'bg-emerald-50/70'}`}>
-      <p className={`mb-2 text-[11px] font-bold uppercase tracking-wider ${tone === 'up' ? 'text-rose-600' : 'text-emerald-700'}`}>{title}</p>
-      <ul className="space-y-1.5">
-        {items.map((item) => (
-          <li key={item.label} className="flex items-center justify-between gap-3 text-sm">
-            <span className="truncate font-medium text-slate-800">{item.label}</span>
-            <DeltaPill value={item.delta} />
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
+/** El mismo árbol pero solo con el gasto de un mes. */
+function restrictToMonth(nodes: SpendTreeNode[], month: string, total: number): SpendTreeNode[] {
+  return nodes
+    .map((node) => {
+      const monthTotal = node.byMonth[month] || 0
+      return {
+        ...node,
+        total: monthTotal,
+        share: total > 0 ? monthTotal / total : 0,
+        transactions: node.transactions.filter((tx) => tx.month === month),
+        children: restrictToMonth(node.children, month, total),
+      }
+    })
+    .filter((node) => node.total > 0)
+    .sort((a, b) => b.total - a.total)
 }
 
 function TxList({ node, indent }: { node: SpendTreeNode; indent: number }) {
@@ -67,12 +69,14 @@ function NodeRow({
   accent,
   expanded,
   onToggle,
+  showMedian,
 }: {
   node: SpendTreeNode
   depth: 0 | 1
   accent: Accent
   expanded: Set<string>
   onToggle: (key: string) => void
+  showMedian: boolean
 }) {
   const open = expanded.has(node.key)
   const hasChildren = node.children.length > 0
@@ -99,31 +103,38 @@ function NodeRow({
               <div className="h-full rounded-full" style={{ width: `${Math.max(node.share * 100, 2)}%`, backgroundColor: accent.solid }} />
             </div>
             <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-slate-400">{Math.round(node.share * 100)}%</span>
-            <span className="hidden w-28 shrink-0 justify-end sm:flex">
-              <DeltaPill value={node.delta} />
-            </span>
+            {showMedian && (
+              <span className="hidden w-28 shrink-0 justify-end text-[11px] tabular-nums text-slate-500 sm:flex">{formatMoney(node.monthlyMedian)}/mes</span>
+            )}
           </div>
         </div>
       </button>
-      {open && hasChildren && node.children.map((child) => <NodeRow key={child.key} node={child} depth={1} accent={accent} expanded={expanded} onToggle={onToggle} />)}
+      {open && hasChildren && node.children.map((child) => <NodeRow key={child.key} node={child} depth={1} accent={accent} expanded={expanded} onToggle={onToggle} showMedian={showMedian} />)}
       {open && !hasChildren && depth >= 1 && <TxList node={node} indent={padLeft + 28} />}
     </>
   )
 }
 
-/** Desglose "¿qué hay detrás?": verticales → subverticales → gastos concretos, comparado con lo habitual. */
+/**
+ * Desglose de una partida en el periodo del presupuesto: mediana mensual, tabla mes a mes (se puede elegir un mes)
+ * y verticales → subverticales → gastos concretos.
+ */
 export default function SpendTreeView({
   tree,
   accent,
   periodLabel,
   partialMonth = false,
+  monthBudgets,
 }: {
   tree: SpendTree
   accent: Accent
   periodLabel: string
   partialMonth?: boolean
+  /** Presupuesto de cada mes (en €/mes) para compararlo con el gasto; los meses sin presupuesto no aparecen */
+  monthBudgets?: Record<string, number>
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [month, setMonth] = useState<string | null>(null)
   const toggle = (key: string) =>
     setExpanded((current) => {
       const next = new Set(current)
@@ -132,59 +143,104 @@ export default function SpendTreeView({
       return next
     })
 
-  const { ups, downs } = useMemo(() => {
-    const cats = tree.nodes.map((cat) => ({ label: cat.label, delta: cat.delta })).filter((item) => Math.abs(item.delta) >= 5)
-    return {
-      ups: cats.filter((item) => item.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 3),
-      downs: cats.filter((item) => item.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 3),
-    }
-  }, [tree])
+  const multiMonth = tree.months.length > 1
+  const activeMonth = multiMonth && month && tree.months.includes(month) ? month : null
+  const monthTotal = activeMonth ? tree.byMonth[activeMonth] || 0 : tree.total
+  const nodes = useMemo(() => (activeMonth ? restrictToMonth(tree.nodes, activeMonth, monthTotal) : tree.nodes), [tree, activeMonth, monthTotal])
+  const hasBudgets = Boolean(monthBudgets && Object.keys(monthBudgets).length > 0)
 
   if (tree.nodes.length === 0) {
     return <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No hay gastos en esta partida {periodLabel}.</p>
   }
-
-  const hasBaseline = tree.baselineMonths > 0 && tree.baselineMonthly > 0
-  const diff = tree.monthlyAvg - tree.baselineMonthly
 
   return (
     <div className="space-y-4">
       <p className="text-sm leading-relaxed text-slate-600">
         {periodLabel[0].toUpperCase() + periodLabel.slice(1)} llevas <strong className="text-slate-900">{formatMoney(tree.total)}</strong> en {tree.txCount}{' '}
         {tree.txCount === 1 ? 'gasto' : 'gastos'}.
-        {hasBaseline && (
+        {multiMonth && tree.medianMonths.length > 0 && (
           <>
             {' '}
-            Tu media de los {tree.baselineMonths} meses anteriores es <strong className="text-slate-900">{formatMoney(tree.baselineMonthly)}/mes</strong>
-            {Math.abs(diff) >= 1 && (
-              <>
-                {' '}
-                (<span className={diff > 0 ? 'font-semibold text-rose-600' : 'font-semibold text-emerald-600'}>
-                  {diff > 0 ? '+' : '−'}
-                  {formatMoney(Math.abs(diff))}/mes
-                </span>
-                )
-              </>
-            )}
+            Mediana mensual: <strong className="text-slate-900">{formatMoney(tree.monthlyMedian)}/mes</strong>{' '}
+            <span className="text-slate-400">
+              ({tree.medianMonths.length === tree.months.length ? `en los ${tree.months.length} meses` : `en los ${tree.medianMonths.length} meses completos`} que lleva vigente el presupuesto)
+            </span>
             .
           </>
         )}
-        {partialMonth && <span className="text-slate-400"> El mes aún no ha terminado, así que la comparación puede quedarse corta.</span>}
+        {partialMonth && <span className="text-slate-400"> El mes aún no ha terminado.</span>}
       </p>
 
-      {(ups.length > 0 || downs.length > 0) && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Insight tone="up" title="Lo que más ha subido" items={ups} />
-          <Insight tone="down" title="Lo que ha bajado" items={downs} />
+      {multiMonth && (
+        <div className="overflow-x-auto rounded-xl border border-slate-100">
+          <table className="min-w-full text-xs">
+            <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-3 py-2 text-left">Mes</th>
+                <th className="px-3 py-2 text-right">Gastado</th>
+                {hasBudgets && <th className="px-3 py-2 text-right">Presupuesto</th>}
+                {hasBudgets && <th className="px-3 py-2 text-right">%</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 tabular-nums">
+              {tree.months.map((item) => {
+                const spent = tree.byMonth[item] || 0
+                const budget = monthBudgets?.[item]
+                const ratio = budget && budget > 0 ? spent / budget : null
+                const selected = activeMonth === item
+                return (
+                  <tr
+                    key={item}
+                    onClick={() => setMonth(selected ? null : item)}
+                    className={`cursor-pointer transition-colors hover:bg-slate-50 ${selected ? 'bg-slate-100 font-medium' : ''}`}
+                  >
+                    <td className="px-3 py-1.5 capitalize text-slate-700">{monthLabel(item)}</td>
+                    <td className="px-3 py-1.5 text-right text-slate-700">{spent > 0 ? formatMoney(spent) : '—'}</td>
+                    {hasBudgets && <td className="px-3 py-1.5 text-right text-slate-500">{budget ? formatMoney(budget) : '—'}</td>}
+                    {hasBudgets && (
+                      <td className={`px-3 py-1.5 text-right font-medium ${ratio === null ? 'text-slate-300' : RATIO_TEXT[statusFromRatio(ratio)]}`}>
+                        {ratio === null ? '—' : `${Math.round(ratio * 100)}%`}
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+              <tr className="bg-slate-50/70 font-semibold text-slate-800">
+                <td className="px-3 py-1.5">Mediana mensual</td>
+                <td className="px-3 py-1.5 text-right">{formatMoney(tree.monthlyMedian)}</td>
+                {hasBudgets && <td className="px-3 py-1.5" />}
+                {hasBudgets && <td className="px-3 py-1.5" />}
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
 
+      {multiMonth && (
+        <p className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+          {activeMonth ? (
+            <>
+              <span>
+                Viendo el detalle de <strong className="capitalize text-slate-700">{monthLabel(activeMonth, true)}</strong>
+              </span>
+              <button type="button" onClick={() => setMonth(null)} className="font-semibold text-[#0d9488] hover:underline">
+                Ver todos los meses
+              </button>
+            </>
+          ) : (
+            <span>Pulsa un mes para ver solo sus gastos.</span>
+          )}
+        </p>
+      )}
+
       <div className="rounded-xl border border-slate-100 p-1.5">
-        <div className="hidden items-center justify-end gap-3 px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:flex">
-          <span className="w-28 text-right">vs. habitual</span>
-        </div>
-        {tree.nodes.map((node) => (
-          <NodeRow key={node.key} node={node} depth={0} accent={accent} expanded={expanded} onToggle={toggle} />
+        {multiMonth && !activeMonth && (
+          <div className="hidden items-center justify-end gap-3 px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:flex">
+            <span className="w-28 text-right">mediana mensual</span>
+          </div>
+        )}
+        {nodes.map((node) => (
+          <NodeRow key={node.key} node={node} depth={0} accent={accent} expanded={expanded} onToggle={toggle} showMedian={multiMonth && !activeMonth} />
         ))}
       </div>
     </div>

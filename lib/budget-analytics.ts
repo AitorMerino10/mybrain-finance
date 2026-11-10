@@ -17,6 +17,7 @@ import {
 } from '@/lib/budgets'
 import {
   addMonths,
+  currentMonthKey,
   fetchCalculatorTransactions,
   getScopedAmount,
   monthRange,
@@ -689,15 +690,6 @@ export function budgetCoverageStart(data: BudgetAnalyticsData, scopeUserId: stri
   return months[0] || null
 }
 
-/** Primer mes en el que una partida tuvo presupuesto para la persona (o la familia). null si nunca lo ha tenido. */
-export function partidaCoverageStart(data: BudgetAnalyticsData, scopeUserId: string | null, idBudgetType: string): string | null {
-  const months = data.budgets
-    .filter((budget) => budget.id_budget_type === idBudgetType && (!scopeUserId || budget.id_user === scopeUserId))
-    .map((budget) => dateToMonth(budget.dt_start_month))
-    .sort()
-  return months[0] || null
-}
-
 // ==================== RANGO DE MESES ====================
 
 export type RangePreset = '6m' | '12m' | 'year' | 'all' | 'custom'
@@ -722,11 +714,71 @@ export function earliestMonth(data: BudgetAnalyticsData): string | null {
 }
 
 
-// ==================== DESGLOSE DE UNA PARTIDA: ¿POR QUÉ ME HE PASADO O QUEDADO CORTO? ====================
+// ==================== PRESUPUESTOS (PERIODOS DE VIGENCIA) ====================
+
+export type BudgetPeriod = {
+  /** Mes de inicio (identifica el presupuesto) */
+  key: string
+  start: string
+  /** Último mes en que sigue vigente (inclusive); null si no tiene fecha de fin */
+  lastMonth: string | null
+  isCurrent: boolean
+  /** Meses transcurridos hasta hoy en los que ha estado vigente (de `start` al último mes vigente, sin pasar de hoy) */
+  months: string[]
+}
+
+/**
+ * Presupuestos que ha tenido la persona (o la familia), del más reciente al más antiguo.
+ * Cada fecha de inicio distinta abre un presupuesto nuevo, que dura hasta que empieza el siguiente o hasta su fecha de fin.
+ */
+export function budgetPeriods(data: BudgetAnalyticsData, scopeUserId: string | null, nowMonth: string): BudgetPeriod[] {
+  const versions = data.budgets.filter((budget) => !scopeUserId || budget.id_user === scopeUserId)
+  const starts = Array.from(new Set(versions.map((budget) => dateToMonth(budget.dt_start_month)))).sort()
+
+  const periods = starts
+    .filter((start) => start <= nowMonth)
+    .map((start, i): BudgetPeriod => {
+      const own = versions.filter((budget) => dateToMonth(budget.dt_start_month) === start)
+      const openEnded = own.some((budget) => !budget.dt_end_month)
+      const ownEnd = openEnded ? null : own.map((budget) => dateToMonth(budget.dt_end_month as string)).sort().pop() || null
+      const next = starts[i + 1] || null
+      const endExclusive = ownEnd && next ? (ownEnd < next ? ownEnd : next) : ownEnd || next
+      const lastMonth = endExclusive ? addMonthsKey(endExclusive, -1) : null
+      const through = lastMonth && lastMonth < nowMonth ? lastMonth : nowMonth
+      return {
+        key: start,
+        start,
+        lastMonth,
+        isCurrent: start <= nowMonth && (lastMonth === null || lastMonth >= nowMonth),
+        months: through >= start ? monthRange(start, through) : [start],
+      }
+    })
+  return periods.reverse()
+}
+
+/** Presupuesto que aplica ahora (o, si ya no hay ninguno vigente, el último que hubo). */
+export function defaultBudgetPeriod(periods: BudgetPeriod[]): BudgetPeriod | null {
+  return periods.find((period) => period.isCurrent) || periods[0] || null
+}
+
+export function budgetPeriodTitle(period: BudgetPeriod): string {
+  const from = monthLabel(period.start, true)
+  return period.lastMonth && period.lastMonth !== period.start ? `${from} – ${monthLabel(period.lastMonth, true)}` : period.lastMonth ? from : `Desde ${from.toLowerCase()}`
+}
+
+export function median(values: number[]): number {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+// ==================== DESGLOSE DE UNA PARTIDA: ¿EN QUÉ SE VA Y CÓMO VA CADA MES? ====================
 
 export type SpendTx = {
   id: string
   date: string
+  month: string
   comment: string | null
   tag: string | null
   amount: number
@@ -741,48 +793,40 @@ export type SpendTreeNode = {
   total: number
   /** Parte del gasto total de la partida */
   share: number
-  /** Gasto medio mensual en el periodo */
-  monthlyAvg: number
-  /** Gasto medio mensual en los meses previos de referencia */
-  baselineMonthly: number
-  /** monthlyAvg − baselineMonthly (positivo = gastas más de lo habitual) */
-  delta: number
+  /** Mediana del gasto mensual en los meses que lleva vigente el presupuesto */
+  monthlyMedian: number
+  /** Gasto de cada mes del periodo */
+  byMonth: Record<string, number>
   children: SpendTreeNode[]
   transactions: SpendTx[]
 }
 
 export type SpendTree = {
   total: number
-  monthlyAvg: number
-  baselineMonthly: number
-  baselineMonths: number
+  /** Mediana mensual de la partida */
+  monthlyMedian: number
+  /** Meses del periodo */
+  months: string[]
+  /** Meses usados para la mediana (se deja fuera el mes en curso si hay otros completos) */
+  medianMonths: string[]
+  byMonth: Record<string, number>
   nodes: SpendTreeNode[]
   txCount: number
 }
 
 /**
- * Gasto de una partida (o de todas si idBudgetType es null) por vertical → subvertical → gasto concreto,
- * comparado con la media mensual de los 3 meses anteriores al periodo.
+ * Gasto de una partida (o de todas si idBudgetType es null) en los meses indicados, por vertical → subvertical → gasto concreto,
+ * con la mediana mensual y el gasto de cada mes.
  */
 export function buildSpendTree(
   data: BudgetAnalyticsData,
   scopeUserId: string | null,
-  params: {
-    months: string[]
-    idBudgetType: string | null
-    baselineCount?: number
-    /** Los meses de referencia anteriores a este no se usan (antes de que existiera el presupuesto no hay nada con qué comparar) */
-    baselineFrom?: string | null
-  }
+  params: { months: string[]; idBudgetType: string | null }
 ): SpendTree {
   const { months, idBudgetType } = params
-  const baselineCount = params.baselineCount ?? 3
   const monthSet = new Set(months)
-  const baselineMonths =
-    months.length > 0
-      ? monthRange(addMonths(months[0], -baselineCount), addMonths(months[0], -1)).filter((month) => !params.baselineFrom || month >= params.baselineFrom)
-      : []
-  const baselineSet = new Set(baselineMonths)
+  const now = currentMonthKey()
+  const medianMonths = months.length > 1 && months.includes(now) ? months.filter((month) => month !== now) : months
 
   type Acc = {
     key: string
@@ -791,24 +835,25 @@ export function buildSpendTree(
     idCategory: string | null
     idSubcategory: string | null
     total: number
-    baseline: number
+    byMonth: Record<string, number>
     children: Map<string, Acc>
     transactions: SpendTx[]
   }
   const makeAcc = (key: string, level: 'cat' | 'sub', label: string, idCategory: string | null, idSubcategory: string | null): Acc => ({
-    key, level, label, idCategory, idSubcategory, total: 0, baseline: 0, children: new Map(), transactions: [],
+    key, level, label, idCategory, idSubcategory, total: 0, byMonth: {}, children: new Map(), transactions: [],
   })
+  const add = (acc: Acc, month: string, amount: number) => {
+    acc.total += amount
+    acc.byMonth[month] = (acc.byMonth[month] || 0) + amount
+  }
 
   const roots = new Map<string, Acc>()
+  const byMonth: Record<string, number> = {}
   let total = 0
-  let baselineTotal = 0
   let txCount = 0
 
   for (const tx of data.transactions) {
-    if (tx.type !== 'Expense') continue
-    const inWindow = monthSet.has(tx.ds_month_declared)
-    const inBaseline = baselineSet.has(tx.ds_month_declared)
-    if (!inWindow && !inBaseline) continue
+    if (tx.type !== 'Expense' || !monthSet.has(tx.ds_month_declared)) continue
     if (idBudgetType !== null && resolveBudgetTypeId(tx, data.defaults) !== idBudgetType) continue
     const amount = getScopedAmount(tx, scopeUserId)
     if (!amount) continue
@@ -822,56 +867,37 @@ export function buildSpendTree(
       makeAcc(`sub:${catKey}:${subKey}`, 'sub', tx.id_subcategory ? tx.ds_subcategory : 'Sin subcategoría', tx.id_category, tx.id_subcategory)
     cat.children.set(subKey, sub)
 
-    if (inWindow) {
-      cat.total += amount
-      sub.total += amount
-      total += amount
-      txCount++
-      const spendTx = { id: tx.id_transaction, date: tx.dt_date, comment: tx.ds_comments, tag: tx.ds_tag, amount }
-      sub.transactions.push(spendTx)
-    } else {
-      cat.baseline += amount
-      sub.baseline += amount
-      baselineTotal += amount
-    }
+    add(cat, tx.ds_month_declared, amount)
+    add(sub, tx.ds_month_declared, amount)
+    byMonth[tx.ds_month_declared] = (byMonth[tx.ds_month_declared] || 0) + amount
+    total += amount
+    txCount++
+    sub.transactions.push({ id: tx.id_transaction, date: tx.dt_date, month: tx.ds_month_declared, comment: tx.ds_comments, tag: tx.ds_tag, amount })
   }
 
-  const windowCount = Math.max(1, months.length)
-  const baseCount = Math.max(1, baselineMonths.length)
+  const medianOf = (values: Record<string, number>) => median(medianMonths.map((month) => values[month] || 0))
 
-  const toNode = (acc: Acc): SpendTreeNode => {
-    const monthlyAvg = acc.total / windowCount
-    const baselineMonthly = acc.baseline / baseCount
-    return {
-      key: acc.key,
-      level: acc.level,
-      label: acc.label,
-      idCategory: acc.idCategory,
-      idSubcategory: acc.idSubcategory,
-      total: acc.total,
-      share: total > 0 ? acc.total / total : 0,
-      monthlyAvg,
-      baselineMonthly,
-      delta: monthlyAvg - baselineMonthly,
-      children: Array.from(acc.children.values())
-        .map(toNode)
-        .filter((node) => node.total > 0)
-        .sort((a, b) => b.total - a.total),
-      transactions: acc.transactions.sort((a, b) => b.amount - a.amount),
-    }
-  }
+  const toNode = (acc: Acc): SpendTreeNode => ({
+    key: acc.key,
+    level: acc.level,
+    label: acc.label,
+    idCategory: acc.idCategory,
+    idSubcategory: acc.idSubcategory,
+    total: acc.total,
+    share: total > 0 ? acc.total / total : 0,
+    monthlyMedian: medianOf(acc.byMonth),
+    byMonth: acc.byMonth,
+    children: Array.from(acc.children.values())
+      .map(toNode)
+      .filter((node) => node.total > 0)
+      .sort((a, b) => b.total - a.total),
+    transactions: acc.transactions.sort((a, b) => b.amount - a.amount),
+  })
 
   const nodes = Array.from(roots.values())
     .map(toNode)
     .filter((node) => node.total > 0)
     .sort((a, b) => b.total - a.total)
 
-  return {
-    total,
-    monthlyAvg: total / windowCount,
-    baselineMonthly: baselineTotal / baseCount,
-    baselineMonths: baselineMonths.length,
-    nodes,
-    txCount,
-  }
+  return { total, monthlyMedian: medianOf(byMonth), months, medianMonths, byMonth, nodes, txCount }
 }

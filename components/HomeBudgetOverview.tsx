@@ -9,7 +9,6 @@ import {
   buildPartidaStatus,
   buildSpendTree,
   monthLabel,
-  partidaCoverageStart,
   statusFromRatio,
   type BudgetAnalyticsData,
   type GoalView,
@@ -268,9 +267,7 @@ function HomePartidaTree({
   periodLabel: string
   partial: boolean
 }) {
-  // La referencia ("tu media de los meses anteriores") solo usa meses en los que la partida ya tenía presupuesto
-  const baselineFrom = useMemo(() => partidaCoverageStart(data, idUser, idBudgetType), [data, idUser, idBudgetType])
-  const tree = useMemo(() => buildSpendTree(data, idUser, { months, idBudgetType, baselineFrom }), [data, idUser, months, idBudgetType, baselineFrom])
+  const tree = useMemo(() => buildSpendTree(data, idUser, { months, idBudgetType }), [data, idUser, months, idBudgetType])
   return <SpendTreeView tree={tree} accent={accent} periodLabel={periodLabel} partialMonth={partial} />
 }
 

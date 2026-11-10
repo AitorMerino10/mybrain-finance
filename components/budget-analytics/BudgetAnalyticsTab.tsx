@@ -4,10 +4,12 @@ import { useMemo, useState } from 'react'
 import { currentMonthKey } from '@/lib/budget-calculator'
 import {
   budgetCoverageStart,
+  budgetPeriods,
+  budgetPeriodTitle,
+  defaultBudgetPeriod,
   earliestMonth,
   monthLabel,
   monthsForPreset,
-  type RangePreset,
 } from '@/lib/budget-analytics'
 import { dateToMonth } from '@/lib/goals'
 import BudgetsPane from './BudgetsPane'
@@ -24,7 +26,8 @@ export default function BudgetAnalyticsTab({ idFamily, idUser }: { idFamily: str
   const { data, loading, error, reload } = useBudgetAnalyticsData(idFamily)
   const [pane, setPane] = useState<Pane>('budgets')
   const [scope, setScope] = useState<string>(idUser) // id de persona o 'family'
-  const [preset, setPreset] = useState<RangePreset>('6m')
+  // Presupuesto que se está mirando: el inicio de uno de ellos, 'all' (todo el histórico) o 'custom' (meses a mano). Vacío = el vigente
+  const [periodKey, setPeriodKey] = useState<string>('')
   const [customMonths, setCustomMonths] = useState<string[]>([])
   // Se incrementa al editar una transacción para que los paneles vuelvan a leer sus datos
   const [refreshKey, setRefreshKey] = useState(0)
@@ -50,21 +53,25 @@ export default function BudgetAnalyticsTab({ idFamily, idUser }: { idFamily: str
     () => monthsForPreset('all', nowMonth, floor || (data ? earliestMonth(data) : null)),
     [nowMonth, data, floor]
   )
+  const periods = useMemo(() => (data ? budgetPeriods(data, scopeUserId, nowMonth) : []), [data, scopeUserId, nowMonth])
+  const selected =
+    periodKey === 'all' || periodKey === 'custom'
+      ? periodKey
+      : periods.find((period) => period.key === periodKey)?.key || defaultBudgetPeriod(periods)?.key || 'all'
   const months = useMemo(() => {
     const clip = (list: string[]) => {
       const kept = floor ? list.filter((month) => month >= floor) : list
       return kept.length > 0 ? kept : [nowMonth]
     }
-    if (preset === 'custom') {
-      return clip(customMonths.filter((month) => availableMonths.includes(month)).sort())
-    }
-    return clip(monthsForPreset(preset, nowMonth, floor || (data ? earliestMonth(data) : null)))
-  }, [preset, customMonths, availableMonths, nowMonth, data, floor])
+    if (selected === 'custom') return clip(customMonths.filter((month) => availableMonths.includes(month)).sort())
+    if (selected === 'all') return clip(availableMonths)
+    return periods.find((period) => period.key === selected)?.months || [nowMonth]
+  }, [selected, periods, customMonths, availableMonths, nowMonth, floor])
 
-  const choosePreset = (next: RangePreset) => {
+  const choosePeriod = (next: string) => {
     // Al pasar a "Elegir meses" se parte de los meses que se estaban viendo
-    if (next === 'custom' && preset !== 'custom') setCustomMonths(months)
-    setPreset(next)
+    if (next === 'custom' && selected !== 'custom') setCustomMonths(months)
+    setPeriodKey(next)
   }
   const toggleMonth = (month: string) =>
     setCustomMonths((current) => (current.includes(month) ? current.filter((item) => item !== month) : [...current, month]))
@@ -132,22 +139,27 @@ export default function BudgetAnalyticsTab({ idFamily, idUser }: { idFamily: str
               <option value="family">Toda la familia</option>
             </select>
           </label>
-          <Segmented
-            size="sm"
-            value={preset}
-            onChange={choosePreset}
-            options={[
-              { value: '6m', label: '6 meses' },
-              { value: '12m', label: '12 meses' },
-              { value: 'year', label: 'Este año' },
-              { value: 'all', label: 'Todo' },
-              { value: 'custom', label: 'Elegir meses' },
-            ]}
-          />
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-500">
+            Presupuesto
+            <select
+              value={selected}
+              onChange={(event) => choosePeriod(event.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 focus:border-[#90EBD6] focus:outline-none focus:ring-2 focus:ring-[#90EBD6]/40"
+            >
+              {periods.map((period) => (
+                <option key={period.key} value={period.key}>
+                  {budgetPeriodTitle(period)}
+                  {period.isCurrent ? ' · vigente' : ''}
+                </option>
+              ))}
+              <option value="all">Todo el histórico</option>
+              <option value="custom">Elegir meses…</option>
+            </select>
+          </label>
         </div>
       </div>
 
-      {preset === 'custom' && (
+      {selected === 'custom' && (
         <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-slate-600">
