@@ -3,7 +3,7 @@ import { sendPushToUser, type AdminClient } from '@/lib/push'
 import { nowInMadrid } from '@/lib/push-alerts'
 import { nextOccurrenceAfter } from '@/lib/recurring'
 
-/** Hora (Madrid) a partir de la cual la tarea programada crea los pendientes recurrentes del día */
+/** Hora (Madrid) por defecto a partir de la cual la tarea programada crea los pendientes recurrentes del día */
 export const RECURRING_MIN_HOUR = 8
 
 /** Máximo de cobros atrasados que se crean de golpe para una regla (por si la tarea estuvo parada) */
@@ -16,20 +16,31 @@ const MAX_CATCH_UP = 6
  */
 export async function generateRecurringPending(
   admin: AdminClient,
-  options: { idFamily?: string; notify?: boolean; minHour?: number } = {}
+  options: { idFamily?: string; notify?: boolean; respectUserHours?: boolean } = {}
 ): Promise<{ created: number; notified: number }> {
   const { today, hour } = nowInMadrid()
-  // La tarea programada espera a la mañana para que el aviso no suene de madrugada
-  if (options.minHour !== undefined && hour < options.minHour) return { created: 0, notified: 0 }
 
   let query = admin.from('pml_cfg_recurring_expense').select('*').eq('is_active', true).lte('dt_next', today)
   if (options.idFamily) query = query.eq('id_family', options.idFamily)
-  const { data: rules, error } = await query
+  const { data: dueRules, error } = await query
   if (error) {
     console.error('Error cargando gastos recurrentes:', error.message)
     return { created: 0, notified: 0 }
   }
-  if (!rules || rules.length === 0) return { created: 0, notified: 0 }
+  if (!dueRules || dueRules.length === 0) return { created: 0, notified: 0 }
+
+  // La tarea programada espera a la hora que cada persona ha elegido (por defecto, la mañana) para que el aviso no suene de madrugada
+  let rules = dueRules
+  if (options.respectUserHours) {
+    const owners = Array.from(new Set(dueRules.map((rule) => rule.id_user_creator || rule.ds_user_ids[0]).filter(Boolean))) as string[]
+    const { data: hourRows } = await admin.from('pml_cfg_notification_pref').select('id_user, nu_recurring_hour').in('id_user', owners)
+    const hourByUser = new Map((hourRows || []).map((row) => [row.id_user, row.nu_recurring_hour]))
+    rules = dueRules.filter((rule) => {
+      const owner = rule.id_user_creator || rule.ds_user_ids[0]
+      return hour >= (hourByUser.get(owner) ?? RECURRING_MIN_HOUR)
+    })
+    if (rules.length === 0) return { created: 0, notified: 0 }
+  }
 
   type Created = { idUser: string; idFamily: string; idPending: string; name: string; amount: number }
   const created: Created[] = []

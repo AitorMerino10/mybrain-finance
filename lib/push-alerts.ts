@@ -6,12 +6,15 @@ import { upcomingOccurrences, type RecurringExpense } from '@/lib/recurring'
 const TIME_ZONE = 'Europe/Madrid'
 const DEFAULT_WARN_PERCENT = 80
 
-/** Hora (Madrid) a la que sale el recordatorio diario de gastos */
+/** Horas (Madrid) por defecto de los avisos programados; cada persona puede cambiarlas en Notificaciones */
 export const DAILY_REMINDER_HOUR = 23
-/** Hora (Madrid) a partir de la cual sale, el día 1, el aviso de cerrar el mes */
 export const MONTH_CLOSE_HOUR = 9
-/** Hora (Madrid) a la que sale el aviso de gastos pendientes sin completar */
 export const PENDING_REMINDER_HOUR = 20
+export const RECURRING_CREATE_HOUR = 8
+
+/** Horas que dura la franja en la que un aviso sale en cuanto se ejecuta la tarea (por si alguna ejecución se retrasa) */
+const WINDOW_HOURS = 3
+const inWindow = (hour: number, start: number) => hour >= start && hour < start + WINDOW_HOURS
 /** Día del mes desde el que se avisa de la previsión de fin de mes (antes hay poco gasto para extrapolar) */
 const FORECAST_FROM_DAY = 7
 
@@ -25,6 +28,9 @@ type Prefs = {
   goals: boolean
   warnPercent: number
   close: boolean
+  dailyHour: number
+  pendingHour: number
+  closeHour: number
 }
 
 type ShareRow = {
@@ -95,14 +101,6 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
   const nowMonth = today.slice(0, 7)
   const familyUrl = `/?family=${scope.idFamily}`
 
-  const sendDaily = scope.scheduled && (scope.force === 'daily' || hour === DAILY_REMINDER_HOUR)
-  const sendClose = scope.scheduled && (scope.force === 'close' || (today.slice(8, 10) === '01' && hour >= MONTH_CLOSE_HOUR))
-  // El aviso de pendientes sale en la primera ejecución a partir de las 20:00 (y antes del recordatorio de las 23:00):
-  // así, si GitHub retrasa o se salta una ejecución, no se pierde el día. No se repite: queda apuntado en pml_log_push_sent.
-  const sendPending = scope.scheduled && (scope.force === 'pending' || (hour >= PENDING_REMINDER_HOUR && hour < DAILY_REMINDER_HOUR))
-  // Tarea programada fuera de hora: no hay nada que enviar
-  if (scope.scheduled && !sendDaily && !sendClose && !sendPending) return []
-
   const { data: members } = await admin.from('pml_rel_user_family').select('id_user').eq('id_family', scope.idFamily)
   const memberIds = (members || []).map((member) => member.id_user)
   const candidateIds = scope.idUsers ? memberIds.filter((id) => scope.idUsers!.includes(id)) : memberIds
@@ -116,7 +114,18 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
   const { data: prefRows } = await admin.from('pml_cfg_notification_pref').select('*').in('id_user', userIds)
   const prefs = new Map<string, Prefs>()
   userIds.forEach((id) =>
-    prefs.set(id, { dailyReminder: true, pending: true, forecast: true, budget: true, goals: true, warnPercent: DEFAULT_WARN_PERCENT, close: true })
+    prefs.set(id, {
+      dailyReminder: true,
+      pending: true,
+      forecast: true,
+      budget: true,
+      goals: true,
+      warnPercent: DEFAULT_WARN_PERCENT,
+      close: true,
+      dailyHour: DAILY_REMINDER_HOUR,
+      pendingHour: PENDING_REMINDER_HOUR,
+      closeHour: MONTH_CLOSE_HOUR,
+    })
   )
   ;(prefRows || []).forEach((row) =>
     prefs.set(row.id_user, {
@@ -127,8 +136,28 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
       goals: row.is_goal_alerts ?? true,
       warnPercent: row.nu_warn_percent,
       close: row.is_close_alerts,
+      dailyHour: row.nu_daily_hour ?? DAILY_REMINDER_HOUR,
+      pendingHour: row.nu_pending_hour ?? PENDING_REMINDER_HOUR,
+      closeHour: row.nu_close_hour ?? MONTH_CLOSE_HOUR,
     })
   )
+
+  // Qué avisos programados le tocan a cada persona ahora, según la hora que ha elegido para cada uno
+  const isFirstOfMonth = today.slice(8, 10) === '01'
+  const due = (idUser: string) => {
+    const pref = prefs.get(idUser)!
+    return {
+      daily: Boolean(scope.scheduled && (scope.force === 'daily' || inWindow(hour, pref.dailyHour))),
+      close: Boolean(scope.scheduled && (scope.force === 'close' || (isFirstOfMonth && hour >= pref.closeHour))),
+      pending: Boolean(scope.scheduled && (scope.force === 'pending' || inWindow(hour, pref.pendingHour))),
+    }
+  }
+  const dueByUser = new Map(userIds.map((id) => [id, due(id)]))
+  const sendDaily = Array.from(dueByUser.values()).some((item) => item.daily)
+  const sendClose = Array.from(dueByUser.values()).some((item) => item.close)
+  const sendPending = Array.from(dueByUser.values()).some((item) => item.pending)
+  // Tarea programada sin nada que enviar a nadie ahora
+  if (scope.scheduled && !sendDaily && !sendClose && !sendPending) return []
 
   const needBudget = !scope.scheduled || sendClose
   const needGoals = !scope.scheduled
@@ -322,6 +351,7 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
   for (const idUser of userIds) {
     const pref = prefs.get(idUser)!
     const userShares = shares.get(idUser) || []
+    const userDue = dueByUser.get(idUser)!
 
     if (!scope.scheduled) {
       // 2) Presupuesto mensual al límite
@@ -404,7 +434,7 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
     }
 
     // 0) Gastos pendientes sin completar
-    if (sendPending && pref.pending) {
+    if (userDue.pending && pref.pending) {
       const mine = pendingByUser.get(idUser) || []
       if (mine.length > 0) {
         const total = mine.reduce((sum, item) => sum + item.amount, 0)
@@ -425,7 +455,7 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
     }
 
     // 1) Recordatorio diario para meter los gastos del día
-    if (sendDaily && pref.dailyReminder) {
+    if (userDue.daily && pref.dailyReminder) {
       const todays = userShares.filter((row) => row.date === today)
       const total = todays.reduce((sum, row) => sum + row.amount, 0)
       alerts.push({
@@ -442,7 +472,7 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
     }
 
     // 4) Día 1: toca cerrar el mes anterior
-    if (sendClose && pref.close) {
+    if (userDue.close && pref.close) {
       const previous = addMonthsTo(nowMonth, -1)
       const { budget, spent } = monthTotals(idUser, previous)
       const name = monthLabel(previous)

@@ -11,6 +11,10 @@ type Prefs = {
   pendingAlerts: boolean
   forecastAlerts: boolean
   recurringAlerts: boolean
+  dailyHour: number
+  pendingHour: number
+  closeHour: number
+  recurringHour: number
 }
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
@@ -22,6 +26,26 @@ function urlBase64ToUint8Array(base64: string) {
 }
 
 type Status = 'loading' | 'unsupported' | 'needs-install' | 'blocked' | 'off' | 'on'
+
+function HourSelect({ value, onChange, label }: { value: number; onChange: (hour: number) => void; label: string }) {
+  return (
+    <label className="flex items-center gap-2 pb-2.5 text-xs text-gray-600">
+      <span>{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-900"
+      >
+        {Array.from({ length: 24 }, (_, hour) => (
+          <option key={hour} value={hour}>
+            {String(hour).padStart(2, '0')}:00
+          </option>
+        ))}
+      </select>
+      <span className="text-gray-400">(hora de Madrid)</span>
+    </label>
+  )
+}
 
 function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (value: boolean) => void; label: string; hint?: React.ReactNode }) {
   return (
@@ -221,20 +245,23 @@ export default function NotificationsSettings() {
             label="Recordatorio diario de gastos"
             checked={prefs.dailyReminder}
             onChange={(value) => updatePrefs({ dailyReminder: value })}
-            hint="Todos los días a las 23:00, para que metas los gastos de hoy."
+            hint="Todos los días, para que metas los gastos de hoy."
           />
+          {prefs.dailyReminder && <HourSelect label="Enviar a las" value={prefs.dailyHour} onChange={(hour) => updatePrefs({ dailyHour: hour })} />}
           <Toggle
             label="Gastos pendientes sin completar"
             checked={prefs.pendingAlerts}
             onChange={(value) => updatePrefs({ pendingAlerts: value })}
-            hint="Todos los días a las 20:00, solo si tienes gastos pendientes (pagos con el móvil o recurrentes) sin completar."
+            hint="Todos los días, solo si tienes gastos pendientes (pagos con el móvil o recurrentes) sin completar."
           />
+          {prefs.pendingAlerts && <HourSelect label="Enviar a las" value={prefs.pendingHour} onChange={(hour) => updatePrefs({ pendingHour: hour })} />}
           <Toggle
             label="Cobros recurrentes"
             checked={prefs.recurringAlerts}
             onChange={(value) => updatePrefs({ recurringAlerts: value })}
             hint="El día que toca un gasto recurrente (suscripción, alquiler…) se crea como pendiente y te avisamos para que lo completes."
           />
+          {prefs.recurringAlerts && <HourSelect label="Crear y avisar a partir de las" value={prefs.recurringHour} onChange={(hour) => updatePrefs({ recurringHour: hour })} />}
           <Toggle
             label="Previsión de fin de mes"
             checked={prefs.forecastAlerts}
@@ -259,6 +286,7 @@ export default function NotificationsSettings() {
             onChange={(value) => updatePrefs({ closeAlerts: value })}
             hint="El día 1 de cada mes, para cerrar el anterior y ver qué tal ha ido."
           />
+          {prefs.closeAlerts && <HourSelect label="Enviar a partir de las" value={prefs.closeHour} onChange={(hour) => updatePrefs({ closeHour: hour })} />}
           <div className="flex items-center justify-between gap-4 py-2.5">
             <span className="text-sm font-medium text-gray-900">Avisarme al llegar al</span>
             <select

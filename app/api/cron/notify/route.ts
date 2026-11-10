@@ -2,14 +2,14 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createAdminClient, isPushConfigured } from '@/lib/push'
 import { processAlerts } from '@/lib/push-alerts'
-import { generateRecurringPending, RECURRING_MIN_HOUR } from '@/lib/recurring-server'
+import { generateRecurringPending } from '@/lib/recurring-server'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 /**
  * Tarea que se lanza cada 10 minutos (ver .github/workflows/notify.yml). Según la hora de Madrid:
- * - crea los gastos pendientes de los gastos recurrentes que toca cobrar hoy (a partir de las 8:00) y avisa
+ * - crea los gastos pendientes de los gastos recurrentes que toca cobrar hoy (a partir de la hora que cada persona elija) y avisa
  * - envía el aviso de gastos pendientes sin completar (primera ejecución desde las 20:00)
  * - envía el recordatorio diario de gastos (23:00)
  * - envía el aviso de cerrar el mes (día 1, a partir de las 9:00)
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   // Los recurrentes se generan aunque las notificaciones no estén configuradas
   let recurring = { created: 0, notified: 0 }
   try {
-    recurring = await generateRecurringPending(admin, { minHour: force ? undefined : RECURRING_MIN_HOUR })
+    recurring = await generateRecurringPending(admin, { respectUserHours: !force })
   } catch (error) {
     console.error('Error generando gastos recurrentes', error)
   }

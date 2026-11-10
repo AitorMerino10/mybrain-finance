@@ -664,6 +664,10 @@ export type Database = {
           is_pending_alerts: boolean
           is_forecast_alerts: boolean
           is_recurring_alerts: boolean
+          nu_daily_hour: number
+          nu_pending_hour: number
+          nu_close_hour: number
+          nu_recurring_hour: number
           is_unassigned_alerts: boolean
           nu_warn_percent: number
         }
@@ -677,6 +681,10 @@ export type Database = {
           is_pending_alerts?: boolean
           is_forecast_alerts?: boolean
           is_recurring_alerts?: boolean
+          nu_daily_hour?: number
+          nu_pending_hour?: number
+          nu_close_hour?: number
+          nu_recurring_hour?: number
           is_unassigned_alerts?: boolean
           nu_warn_percent?: number
         }
@@ -690,6 +698,10 @@ export type Database = {
           is_pending_alerts?: boolean
           is_forecast_alerts?: boolean
           is_recurring_alerts?: boolean
+          nu_daily_hour?: number
+          nu_pending_hour?: number
+          nu_close_hour?: number
+          nu_recurring_hour?: number
           is_unassigned_alerts?: boolean
           nu_warn_percent?: number
         }
