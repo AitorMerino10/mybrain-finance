@@ -2,12 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { isGoogleMapsConfigured, loadGoogleMaps } from '@/lib/google-maps'
-import { googleMapsUrl, type PlaceValue } from '@/lib/places'
+import { filterKnownPlaces, googleMapsUrl, placesMatch, type PlaceValue, type UsualPlace } from '@/lib/places'
 
 interface PlacePickerProps {
   value: PlaceValue | null
   onChange: (place: PlaceValue | null) => void
   disabled?: boolean
+  /** Sitios a los que se suele ir en la vertical o subvertical elegida */
+  usualPlaces?: UsualPlace[]
+  usualScope?: 'subcategory' | 'category' | null
+  /** Sitios ya usados, para buscar cuando no hay Google Maps */
+  knownPlaces?: UsualPlace[]
 }
 
 interface Suggestion {
@@ -31,11 +36,28 @@ function toPlaceValue(place: google.maps.places.Place): PlaceValue | null {
   }
 }
 
+function chooseUsual(place: UsualPlace): PlaceValue {
+  return {
+    latitude: place.latitude,
+    longitude: place.longitude,
+    name: place.name,
+    address: place.address,
+    placeId: place.placeId,
+  }
+}
+
 /**
  * Lugar de una transacción: buscador de Google Maps (comercios y direcciones), sugerencias de sitios
  * cercanos a unas coordenadas y mapa en el que se puede mover el pin.
  */
-export default function PlacePicker({ value, onChange, disabled = false }: PlacePickerProps) {
+export default function PlacePicker({
+  value,
+  onChange,
+  disabled = false,
+  usualPlaces = [],
+  usualScope = null,
+  knownPlaces = [],
+}: PlacePickerProps) {
   const [ready, setReady] = useState(false)
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
@@ -232,27 +254,142 @@ export default function PlacePicker({ value, onChange, disabled = false }: Place
     )
   }
 
-  // Sin clave de Google: solo se enseña el lugar guardado, si lo hay, como enlace
-  if (!isGoogleMapsConfigured) {
-    if (!value) return null
-    return (
+  const localMatches = isGoogleMapsConfigured ? [] : filterKnownPlaces(knownPlaces, query)
+  const usualLabel =
+    usualScope === 'subcategory' ? 'En esta subvertical sueles ir a' : 'En esta vertical sueles ir a'
+
+  const pickKnownPlace = (place: UsualPlace) => {
+    onChange(chooseUsual(place))
+    setQuery('')
+  }
+
+  const searchBox = (
+    <div className="relative z-30">
+      <input
+        type="text"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        disabled={disabled || (isGoogleMapsConfigured && !ready)}
+        placeholder={
+          isGoogleMapsConfigured
+            ? ready
+              ? 'Busca un comercio o dirección…'
+              : 'Cargando mapa…'
+            : 'Busca un sitio…'
+        }
+        autoComplete="off"
+        aria-label="Buscar lugar"
+        className="block w-full min-w-0 rounded-xl border border-gray-200 bg-white px-4 py-3.5 text-gray-900 shadow-sm transition-all duration-200 placeholder:text-gray-400 hover:border-gray-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50"
+      />
+      {isGoogleMapsConfigured && suggestions.length > 0 && (
+        <ul className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+          {suggestions.map((suggestion) => (
+            <li key={suggestion.key}>
+              <button
+                type="button"
+                onClick={() => selectSuggestion(suggestion)}
+                className="block w-full px-4 py-2.5 text-left hover:bg-gray-50"
+              >
+                <span className="block truncate text-sm font-medium text-gray-900">{suggestion.main}</span>
+                {suggestion.secondary && <span className="block truncate text-xs text-gray-500">{suggestion.secondary}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!isGoogleMapsConfigured && localMatches.length > 0 && (
+        <ul className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+          {localMatches.map((place) => (
+            <li key={place.placeId || `${place.name}-${place.latitude}`}>
+              <button
+                type="button"
+                onClick={() => pickKnownPlace(place)}
+                className="block w-full px-4 py-2.5 text-left hover:bg-gray-50"
+              >
+                <span className="block truncate text-sm font-medium text-gray-900">{place.name}</span>
+                {place.address && <span className="block truncate text-xs text-gray-500">{place.address}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!isGoogleMapsConfigured && query.trim().length > 0 && localMatches.length === 0 && (
+        <p className="mt-1 text-xs text-gray-500">Ningún sitio guardado coincide.</p>
+      )}
+    </div>
+  )
+
+  const usualChips =
+    usualPlaces.length > 0 ? (
       <div className="space-y-2">
-        <label className="block text-sm font-semibold text-gray-700">Lugar</label>
+        <p className="text-xs font-medium text-gray-600">{usualLabel}</p>
+        <div className="flex flex-wrap gap-2">
+          {usualPlaces.map((place) => {
+            const selected = Boolean(value && placesMatch(value, place))
+            return (
+              <button
+                key={place.placeId || `${place.name}-${place.latitude}`}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => onChange(selected ? null : chooseUsual(place))}
+                disabled={disabled}
+                title={place.address || undefined}
+                className={`max-w-full truncate rounded-full border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                  selected
+                    ? 'border-emerald-700 bg-emerald-600 text-white'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                }`}
+              >
+                {place.name}
+                <span className={selected ? 'font-normal text-white/80' : 'font-normal text-emerald-800/70'}>
+                  {selected ? ' · Deshacer' : ` · ${place.visits} veces`}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    ) : null
+
+  const chosenPlace = value ? (
+    <div className="flex items-start gap-3 bg-white p-3">
+      <span className="text-xl" aria-hidden>
+        📍
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-gray-900">{value.name || 'Ubicación del pago'}</p>
+        <p className="text-xs text-gray-500">
+          {value.address || `${value.latitude.toFixed(5)}, ${value.longitude.toFixed(5)}`}
+        </p>
         <a
           href={googleMapsUrl(value)}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900"
+          className="mt-1 inline-block text-xs font-medium text-sky-700 hover:underline"
         >
-          <span className="text-xl" aria-hidden>
-            📍
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-semibold">{value.name || 'Sitio del pago'}</span>
-            <span className="block text-xs text-sky-800/80">Ver en Google Maps</span>
-          </span>
-          <span aria-hidden>↗</span>
+          Abrir en Google Maps ↗
         </a>
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        disabled={disabled}
+        className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+      >
+        Quitar
+      </button>
+    </div>
+  ) : null
+
+  if (!isGoogleMapsConfigured) {
+    return (
+      <div className="space-y-3">
+        <label className="block text-sm font-semibold text-gray-700">
+          Lugar <span className="font-normal text-gray-400">(opcional)</span>
+        </label>
+        {searchBox}
+        {usualChips}
+        {chosenPlace && <div className="overflow-hidden rounded-xl border border-gray-200 shadow-sm">{chosenPlace}</div>}
       </div>
     )
   }
@@ -263,36 +400,14 @@ export default function PlacePicker({ value, onChange, disabled = false }: Place
         Lugar <span className="font-normal text-gray-400">(opcional)</span>
       </label>
 
+      {searchBox}
+
+      {usualChips}
+
       {value && (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div ref={mapDivRef} className="h-48 w-full bg-gray-100" />
-          <div className="flex items-start gap-3 p-3">
-            <span className="text-xl" aria-hidden>
-              📍
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-gray-900">{value.name || 'Ubicación del pago'}</p>
-              <p className="text-xs text-gray-500">
-                {value.address || `${value.latitude.toFixed(5)}, ${value.longitude.toFixed(5)}`}
-              </p>
-              <a
-                href={googleMapsUrl(value)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-block text-xs font-medium text-sky-700 hover:underline"
-              >
-                Abrir en Google Maps ↗
-              </a>
-            </div>
-            <button
-              type="button"
-              onClick={() => onChange(null)}
-              disabled={disabled}
-              className="rounded-lg px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
-            >
-              Quitar
-            </button>
-          </div>
+          {chosenPlace}
+          <div ref={mapDivRef} className="h-40 w-full border-t border-gray-100 bg-gray-100" />
           <p className="border-t border-gray-100 px-3 py-2 text-[11px] text-gray-400">
             Arrastra el pin o toca el mapa para ajustar el punto exacto.
           </p>
@@ -317,34 +432,6 @@ export default function PlacePicker({ value, onChange, disabled = false }: Place
           </div>
         </div>
       )}
-
-      <div className="relative">
-        <input
-          type="text"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          disabled={disabled || !ready}
-          placeholder={ready ? (value ? 'Cambiar lugar: busca un comercio o dirección…' : 'Busca un comercio o dirección…') : 'Cargando mapa…'}
-          autoComplete="off"
-          className="block w-full min-w-0 rounded-xl border border-gray-200 bg-white px-4 py-3.5 text-gray-900 shadow-sm transition-all duration-200 placeholder:text-gray-400 hover:border-gray-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50"
-        />
-        {suggestions.length > 0 && (
-          <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-            {suggestions.map((suggestion) => (
-              <li key={suggestion.key}>
-                <button
-                  type="button"
-                  onClick={() => selectSuggestion(suggestion)}
-                  className="block w-full px-4 py-2.5 text-left hover:bg-gray-50"
-                >
-                  <span className="block truncate text-sm font-medium text-gray-900">{suggestion.main}</span>
-                  {suggestion.secondary && <span className="block truncate text-xs text-gray-500">{suggestion.secondary}</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
 
       <button
         type="button"

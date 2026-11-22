@@ -41,7 +41,8 @@ import TagModal from './TagModal'
 import TagPicker from './TagPicker'
 import HelpTooltip from './HelpTooltip'
 import PlacePicker from './PlacePicker'
-import { placeToTransactionFields, type PlaceValue } from '@/lib/places'
+import { useHabitualExpenses, useUsualPlaces } from './useUsualPlaces'
+import { placesMatch, placeToTransactionFields, type HabitualExpense, type PlaceValue } from '@/lib/places'
 import {
   EVERY_MONTHS_OPTIONS,
   addDaysTo,
@@ -121,6 +122,12 @@ export default function TransactionForm({
   const [showTagModal, setShowTagModal] = useState(false)
   const [amountInputValue, setAmountInputValue] = useState<string>('')
   const [place, setPlace] = useState<PlaceValue | null>(null)
+  const usualPlaces = useUsualPlaces(
+    idFamily,
+    transactionType === 'Expense' ? formData.id_category : null,
+    formData.id_subcategory
+  )
+  const habitualExpenses = useHabitualExpenses(idFamily, transactionType === 'Expense')
   // Repetir el gasto (crea un gasto recurrente que llega como pendiente el día que toca)
   const [repeatEnabled, setRepeatEnabled] = useState(false)
   const [repeatEvery, setRepeatEvery] = useState(1)
@@ -454,6 +461,43 @@ export default function TransactionForm({
     (c) => c.id_category === formData.id_category
   )
 
+  const habitIsActive = (habit: HabitualExpense) =>
+    formData.id_category === habit.idCategory && (formData.id_subcategory || null) === habit.idSubcategory
+
+  const applyHabit = (habit: HabitualExpense) => {
+    const recommendedPlace = habit.place
+      ? {
+          latitude: habit.place.latitude,
+          longitude: habit.place.longitude,
+          name: habit.place.name,
+          address: habit.place.address,
+          placeId: habit.place.placeId,
+        }
+      : null
+    if (habitIsActive(habit)) {
+      setFormData((prev) => ({
+        ...prev,
+        id_category: null,
+        id_subcategory: null,
+        id_budget_type: transactionType === 'Expense' ? null : prev.id_budget_type,
+        id_budget_subtype: transactionType === 'Expense' ? null : prev.id_budget_subtype,
+      }))
+      if (recommendedPlace && place && placesMatch(place, recommendedPlace)) setPlace(null)
+      return
+    }
+    const previous = habitualExpenses.find(habitIsActive)
+    const placeWasRecommendation = !place || Boolean(previous?.place && placesMatch(place, previous.place))
+    const budgetDefault = budgetDefaults.find((item) => item.id_subcategory === habit.idSubcategory)
+    setFormData((prev) => ({
+      ...prev,
+      id_category: habit.idCategory,
+      id_subcategory: habit.idSubcategory,
+      id_budget_type: budgetDefault?.id_budget_type || prev.id_budget_type,
+      id_budget_subtype: budgetDefault?.id_budget_type ? null : prev.id_budget_subtype,
+    }))
+    if (recommendedPlace && placeWasRecommendation) setPlace(recommendedPlace)
+  }
+
   return (
     <>
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -613,6 +657,41 @@ export default function TransactionForm({
             <p className="mt-1 text-sm text-red-600 font-medium">{errors.ft_amount}</p>
           )}
         </div>
+
+        {transactionType === 'Expense' && habitualExpenses.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-gray-700">Gastos habituales</p>
+            <p className="text-xs text-gray-500">Los gastos que más repites, tengan sitio o no. Puedes quitar el sitio o buscar otro.</p>
+            <div className="flex flex-wrap gap-2">
+              {habitualExpenses.map((habit) => {
+                const active = habitIsActive(habit)
+                return (
+                  <button
+                    key={habit.key}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => applyHabit(habit)}
+                    disabled={loading}
+                    title={habit.place ? `${habit.subcategoryName} · ${habit.categoryName} · ${habit.place.name}` : `${habit.subcategoryName} · ${habit.categoryName}`}
+                    className={`max-w-full truncate rounded-full border px-3 py-1.5 text-left text-xs font-medium disabled:opacity-50 ${
+                      active
+                        ? 'border-indigo-700 bg-indigo-600 text-white'
+                        : 'border-gray-200 bg-white text-gray-800 hover:border-indigo-200 hover:bg-indigo-50'
+                    }`}
+                  >
+                    {habit.subcategoryName || habit.categoryName}
+                    <span className={active ? 'font-normal text-white/80' : 'font-normal text-gray-500'}>
+                      {habit.subcategoryName ? ` · ${habit.categoryName}` : ''}
+                      {` · ${habit.visits} veces`}
+                      {habit.place ? ` · ${habit.place.name}` : ''}
+                      {active ? ' · Deshacer' : ''}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Categoría con icono */}
         <div className="space-y-2">
@@ -993,7 +1072,14 @@ export default function TransactionForm({
         )}
 
         {/* Lugar */}
-        <PlacePicker value={place} onChange={setPlace} disabled={loading} />
+        <PlacePicker
+          value={place}
+          onChange={setPlace}
+          disabled={loading}
+          usualPlaces={usualPlaces.places}
+          usualScope={usualPlaces.scope}
+          knownPlaces={usualPlaces.knownPlaces}
+        />
 
         {/* Comentarios */}
         <div className="space-y-2">

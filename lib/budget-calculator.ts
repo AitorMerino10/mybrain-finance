@@ -31,6 +31,7 @@ export type CalcTransaction = {
   ft_latitude?: number | null
   ft_longitude?: number | null
   ds_place_name?: string | null
+  ds_place_address?: string | null
   ds_place_id?: string | null
 }
 
@@ -219,6 +220,7 @@ function mapRow(row: any): CalcTransaction {
     ft_latitude: row.ft_latitude != null ? Number(row.ft_latitude) : null,
     ft_longitude: row.ft_longitude != null ? Number(row.ft_longitude) : null,
     ds_place_name: row.ds_place_name ?? null,
+    ds_place_address: row.ds_place_address ?? null,
     ds_place_id: row.ds_place_id ?? null,
     users: (row.users || []).map((user: any) => ({
       id_user: user.id_user,

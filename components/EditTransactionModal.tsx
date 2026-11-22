@@ -41,6 +41,7 @@ import SubcategoryModal from './SubcategoryModal'
 import TagModal from './TagModal'
 import TagPicker from './TagPicker'
 import PlacePicker from './PlacePicker'
+import { useUsualPlaces } from './useUsualPlaces'
 import { placeFromTransaction, placeToTransactionFields, type PlaceValue } from '@/lib/places'
 
 interface EditTransactionModalProps {
@@ -95,6 +96,11 @@ export default function EditTransactionModal({
   const [hadStoredAllocation, setHadStoredAllocation] = useState(false)
   const [budgetDefaults, setBudgetDefaults] = useState<SubcategoryBudgetDefault[]>([])
   const [place, setPlace] = useState<PlaceValue | null>(() => placeFromTransaction(transaction))
+  const usualPlaces = useUsualPlaces(
+    idFamily,
+    transactionType === 'Expense' ? formData.id_category : null,
+    formData.id_subcategory
+  )
   const [loading, setLoading] = useState(false)
   const [loadingSubcategories, setLoadingSubcategories] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -664,7 +670,14 @@ export default function EditTransactionModal({
                 📍 Ver sitio del pago en Google Maps
               </a>
             )}
-            <PlacePicker value={place} onChange={setPlace} disabled={loading} />
+            <PlacePicker
+              value={place}
+              onChange={setPlace}
+              disabled={loading}
+              usualPlaces={usualPlaces.places}
+              usualScope={usualPlaces.scope}
+              knownPlaces={usualPlaces.knownPlaces}
+            />
 
             {/* Comentarios */}
             <div>

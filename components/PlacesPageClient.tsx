@@ -108,6 +108,50 @@ function shortDate(value: string) {
   return new Date(`${value}T00:00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+function normalizeSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Texto del buscador del mapa: gasto, vertical, subvertical, fecha, importe y lugar. */
+function expenseSearchText(tx: CalcTransaction): string {
+  const iso = (tx.dt_date || '').slice(0, 10)
+  const [year, month, day] = iso.split('-')
+  let monthName = ''
+  let longDate = ''
+  if (year && month && day) {
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+    monthName = new Intl.DateTimeFormat('es-ES', { month: 'long', timeZone: 'UTC' }).format(date)
+    longDate = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(date)
+  }
+  const amounts = Number.isFinite(tx.ft_amount)
+    ? [String(tx.ft_amount), tx.ft_amount.toFixed(2), tx.ft_amount.toFixed(2).replace('.', ',')]
+    : []
+  return normalizeSearch(
+    [
+      tx.ds_comments,
+      tx.ds_tag,
+      tx.ds_category,
+      tx.ds_subcategory,
+      tx.ds_place_name,
+      tx.ds_place_address,
+      iso,
+      day && month && year ? `${day}/${month}/${year}` : '',
+      day && month ? `${Number(day)}/${Number(month)}` : '',
+      monthName,
+      longDate,
+      tx.ds_month_declared,
+      ...amounts,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  )
+}
+
 export default function PlacesPageClient({ idFamily, idUser }: { idFamily: string; idUser: string }) {
   const today = getTodayISOString()
   const [transactions, setTransactions] = useState<CalcTransaction[]>([])
@@ -118,6 +162,7 @@ export default function PlacesPageClient({ idFamily, idUser }: { idFamily: strin
   // '' = todos los gastos de la familia; si no, el id de la persona
   const [personId, setPersonId] = useState('')
   const [members, setMembers] = useState<FamilyMember[]>([])
+  const [search, setSearch] = useState('')
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const [mapError, setMapError] = useState<string | null>(null)
@@ -159,10 +204,18 @@ export default function PlacesPageClient({ idFamily, idUser }: { idFamily: strin
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]))
   }, [expenses])
 
+  const searchTerms = useMemo(() => normalizeSearch(search).split(' ').filter(Boolean), [search])
+
   const filtered = useMemo(() => {
     const from = periodStart(period, today)
-    return expenses.filter((tx) => (!from || tx.dt_date >= from) && (!categoryId || tx.id_category === categoryId))
-  }, [expenses, period, categoryId, today])
+    return expenses.filter((tx) => {
+      if (from && tx.dt_date < from) return false
+      if (categoryId && tx.id_category !== categoryId) return false
+      if (searchTerms.length === 0) return true
+      const haystack = expenseSearchText(tx)
+      return searchTerms.every((term) => haystack.includes(term))
+    })
+  }, [expenses, period, categoryId, today, searchTerms])
 
   const located = useMemo(
     () => filtered.filter((tx): tx is Located => tx.ft_latitude != null && tx.ft_longitude != null),
@@ -313,6 +366,29 @@ export default function PlacesPageClient({ idFamily, idUser }: { idFamily: strin
       </div>
 
       <div className="mb-4 space-y-3">
+        <div className="relative">
+          <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+          </svg>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar por gasto, vertical, subvertical, fecha o lugar…"
+            aria-label="Buscar gastos en el mapa"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-[#90EBD6] focus:outline-none focus:ring-2 focus:ring-[#90EBD6]/30 [&::-webkit-search-cancel-button]:hidden"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              aria-label="Borrar búsqueda"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-1.5 text-slate-400 hover:text-slate-700"
+            >
+              ✕
+            </button>
+          )}
+        </div>
         {members.length > 1 && (
           <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             <div className="flex w-max gap-2 sm:w-auto sm:flex-wrap" role="group" aria-label="Persona">
@@ -392,7 +468,11 @@ export default function PlacesPageClient({ idFamily, idUser }: { idFamily: strin
             )}
             {!mapError && !loading && groups.length === 0 && (
               <div className="pointer-events-none absolute inset-x-4 top-4 rounded-xl bg-white/95 p-3 text-center text-sm text-slate-600 shadow">
-                No hay gastos con ubicación en este periodo. Se guardan al pagar con el móvil o al elegir un sitio en el formulario.
+                {searchTerms.length > 0
+                  ? withoutPlace > 0
+                    ? 'Hay gastos que coinciden, pero ninguno tiene sitio en el mapa.'
+                    : 'Ningún gasto coincide con la búsqueda.'
+                  : 'No hay gastos con ubicación en este periodo. Se guardan al pagar con el móvil o al elegir un sitio en el formulario.'}
               </div>
             )}
           </div>
@@ -409,7 +489,7 @@ export default function PlacesPageClient({ idFamily, idUser }: { idFamily: strin
           <h2 className="mb-2 text-sm font-semibold text-slate-900">Gastos por sitio</h2>
           {groups.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-              {loading ? 'Cargando…' : 'Sin sitios que mostrar.'}
+              {loading ? 'Cargando…' : searchTerms.length > 0 ? 'Ningún sitio coincide con la búsqueda.' : 'Sin sitios que mostrar.'}
             </p>
           ) : (
             <ul className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
