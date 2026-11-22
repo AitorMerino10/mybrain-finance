@@ -15,6 +15,15 @@ export const RECURRING_CREATE_HOUR = 8
 /** Horas que dura la franja en la que un aviso sale en cuanto se ejecuta la tarea (por si alguna ejecución se retrasa) */
 const WINDOW_HOURS = 3
 const inWindow = (hour: number, start: number) => hour >= start && hour < start + WINDOW_HOURS
+
+function hourOf(value: unknown, fallback: number): number {
+  const hour = Number(value)
+  return Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : fallback
+}
+
+function flag(value: unknown, fallback: boolean): boolean {
+  return value === true || value === false ? value : fallback
+}
 /** Día del mes desde el que se avisa de la previsión de fin de mes (antes hay poco gasto para extrapolar) */
 const FORECAST_FROM_DAY = 7
 
@@ -111,7 +120,12 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
   const userIds = Array.from(new Set((subscriptions || []).map((item) => item.id_user)))
   if (userIds.length === 0) return []
 
-  const { data: prefRows } = await admin.from('pml_cfg_notification_pref').select('*').in('id_user', userIds)
+  const { data: prefRows, error: prefError } = await admin.from('pml_cfg_notification_pref').select('*').in('id_user', userIds)
+  if (prefError) {
+    // Sin preferencias no se envía nada: si no, un fallo de lectura reactivaría avisos que la persona ha quitado
+    console.error('Error cargando preferencias de avisos:', prefError.message)
+    return []
+  }
   const prefs = new Map<string, Prefs>()
   userIds.forEach((id) =>
     prefs.set(id, {
@@ -129,16 +143,16 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
   )
   ;(prefRows || []).forEach((row) =>
     prefs.set(row.id_user, {
-      dailyReminder: row.is_daily_reminder ?? true,
-      pending: row.is_pending_alerts ?? true,
-      forecast: row.is_forecast_alerts ?? true,
-      budget: row.is_budget_alerts,
-      goals: row.is_goal_alerts ?? true,
+      dailyReminder: flag(row.is_daily_reminder, true),
+      pending: flag(row.is_pending_alerts, true),
+      forecast: flag(row.is_forecast_alerts, true),
+      budget: flag(row.is_budget_alerts, true),
+      goals: flag(row.is_goal_alerts, true),
       warnPercent: row.nu_warn_percent,
-      close: row.is_close_alerts,
-      dailyHour: row.nu_daily_hour ?? DAILY_REMINDER_HOUR,
-      pendingHour: row.nu_pending_hour ?? PENDING_REMINDER_HOUR,
-      closeHour: row.nu_close_hour ?? MONTH_CLOSE_HOUR,
+      close: flag(row.is_close_alerts, true),
+      dailyHour: hourOf(row.nu_daily_hour, DAILY_REMINDER_HOUR),
+      pendingHour: hourOf(row.nu_pending_hour, PENDING_REMINDER_HOUR),
+      closeHour: hourOf(row.nu_close_hour, MONTH_CLOSE_HOUR),
     })
   )
 
@@ -147,9 +161,9 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
   const due = (idUser: string) => {
     const pref = prefs.get(idUser)!
     return {
-      daily: Boolean(scope.scheduled && (scope.force === 'daily' || inWindow(hour, pref.dailyHour))),
-      close: Boolean(scope.scheduled && (scope.force === 'close' || (isFirstOfMonth && hour >= pref.closeHour))),
-      pending: Boolean(scope.scheduled && (scope.force === 'pending' || inWindow(hour, pref.pendingHour))),
+      daily: Boolean(pref.dailyReminder && scope.scheduled && (scope.force === 'daily' || inWindow(hour, pref.dailyHour))),
+      close: Boolean(pref.close && scope.scheduled && (scope.force === 'close' || (isFirstOfMonth && hour >= pref.closeHour))),
+      pending: Boolean(pref.pending && scope.scheduled && (scope.force === 'pending' || inWindow(hour, pref.pendingHour))),
     }
   }
   const dueByUser = new Map(userIds.map((id) => [id, due(id)]))
@@ -434,7 +448,7 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
     }
 
     // 0) Gastos pendientes sin completar
-    if (userDue.pending && pref.pending) {
+    if (userDue.pending) {
       const mine = pendingByUser.get(idUser) || []
       if (mine.length > 0) {
         const total = mine.reduce((sum, item) => sum + item.amount, 0)
@@ -454,8 +468,8 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
       }
     }
 
-    // 1) Recordatorio diario para meter los gastos del día
-    if (userDue.daily && pref.dailyReminder) {
+    // 1) Recordatorio diario para meter los gastos del día (una vez al día; la tarea corre cada 10 minutos)
+    if (userDue.daily) {
       const todays = userShares.filter((row) => row.date === today)
       const total = todays.reduce((sum, row) => sum + row.amount, 0)
       alerts.push({
@@ -472,7 +486,7 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
     }
 
     // 4) Día 1: toca cerrar el mes anterior
-    if (userDue.close && pref.close) {
+    if (userDue.close) {
       const previous = addMonthsTo(nowMonth, -1)
       const { budget, spent } = monthTotals(idUser, previous)
       const name = monthLabel(previous)
@@ -493,28 +507,37 @@ async function loadAlerts(admin: AdminClient, scope: AlertScope): Promise<Alert[
   return alerts
 }
 
+/**
+ * Reserva el aviso antes de enviarlo. La clave lleva ":" (daily:2026-11-22) y un filtro `in` de PostgREST
+ * no encuentra esas filas, así que la comprobación anterior creía que no se había enviado y lo repetía
+ * en cada ejecución (cada 10 minutos). La inserción contra la clave primaria sí es fiable.
+ * Devuelve false si ya estaba reservado o si no se ha podido apuntar (en ese caso no se envía).
+ */
+async function claimPushSlot(admin: AdminClient, idUser: string, key: string): Promise<boolean> {
+  const { error } = await admin.from('pml_log_push_sent').insert({ id_user: idUser, ds_key: key })
+  if (!error) return true
+  if (error.code === '23505' || /duplicate key/i.test(error.message || '')) return false
+  console.error('No se pudo registrar el aviso', key, error.message)
+  return false
+}
+
 /** Calcula los avisos pendientes de una familia, descarta los ya enviados y envía el resto. Devuelve cuántos se enviaron. */
 export async function processAlerts(admin: AdminClient, scope: AlertScope): Promise<number> {
   const alerts = await loadAlerts(admin, scope)
   if (alerts.length === 0) return 0
 
-  const alreadySent = new Set<string>()
-  if (!scope.force) {
-    const keysByUser = new Map<string, string[]>()
-    alerts.forEach((alert) => keysByUser.set(alert.idUser, [...(keysByUser.get(alert.idUser) || []), alert.key]))
-    for (const [idUser, keys] of Array.from(keysByUser.entries())) {
-      const { data } = await admin.from('pml_log_push_sent').select('ds_key').eq('id_user', idUser).in('ds_key', keys)
-      ;(data || []).forEach((row) => alreadySent.add(`${idUser}|${row.ds_key}`))
-    }
-  }
-
   let sent = 0
   for (const alert of alerts) {
-    if (alreadySent.has(`${alert.idUser}|${alert.key}`)) continue
+    if (!scope.force) {
+      const claimed = await claimPushSlot(admin, alert.idUser, alert.key)
+      if (!claimed) continue
+    }
     const delivered = await sendPushToUser(admin, alert.idUser, { title: alert.title, body: alert.body, url: alert.url, tag: alert.tag })
     if (delivered > 0) {
       sent += 1
-      await admin.from('pml_log_push_sent').upsert({ id_user: alert.idUser, ds_key: alert.key })
+    } else if (!scope.force) {
+      // No llegó a ningún dispositivo: se libera la reserva para reintentarlo dentro de la franja
+      await admin.from('pml_log_push_sent').delete().eq('id_user', alert.idUser).eq('ds_key', alert.key)
     }
   }
   return sent

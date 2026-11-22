@@ -18,6 +18,7 @@ self.addEventListener('push', (event) => {
       icon: '/app-icon/rounded/192',
       badge: '/app-icon/rounded/192',
       tag: data.tag || undefined,
+      renotify: false,
       data: { url: data.url || '/' },
     })
   )

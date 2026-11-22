@@ -30,6 +30,23 @@ function daysInMonth(year: number, monthIndex: number): number {
   return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
 }
 
+function asIsoDate(value: string | null | undefined): string {
+  return (value || '').slice(0, 10)
+}
+
+/** Cada cuántos meses, siempre entre 1 y 24. Un 0 haría que la fecha no avanzara y se creara un pendiente cada día. */
+function everyMonths(rule: Schedule): number {
+  const value = Math.trunc(Number(rule.nu_every_months))
+  if (!Number.isFinite(value) || value < 1) return 1
+  return Math.min(value, 24)
+}
+
+function chargeDay(rule: Schedule): number {
+  const value = Math.trunc(Number(rule.nu_day_of_month))
+  if (!Number.isFinite(value) || value < 1) return 1
+  return Math.min(value, 31)
+}
+
 export function addDaysTo(value: string, days: number): string {
   const date = parseDate(value)
   date.setUTCDate(date.getUTCDate() + days)
@@ -49,10 +66,11 @@ export function dateInMonth(month: string, day: number): string {
 /** Fecha del cobro número `n` (0 = el primero) de una regla. */
 export function occurrenceDate(rule: Schedule, n: number): string {
   const first = parseDate(rule.dt_start)
-  const totalMonths = first.getUTCFullYear() * 12 + first.getUTCMonth() + rule.nu_every_months * n
+  const totalMonths = first.getUTCFullYear() * 12 + first.getUTCMonth() + everyMonths(rule) * n
   const year = Math.floor(totalMonths / 12)
   const monthIndex = totalMonths % 12
-  return formatDate(new Date(Date.UTC(year, monthIndex, Math.min(rule.nu_day_of_month, daysInMonth(year, monthIndex)))))
+  const day = Math.min(chargeDay(rule), daysInMonth(year, monthIndex))
+  return formatDate(new Date(Date.UTC(year, monthIndex, day)))
 }
 
 /** Primer cobro de la regla que cae en `date` o después. */
@@ -67,6 +85,54 @@ export function firstOccurrenceOnOrAfter(rule: Schedule, date: string): string {
 /** Siguiente cobro de la regla estrictamente posterior a `date`. */
 export function nextOccurrenceAfter(rule: Schedule, date: string): string {
   return firstOccurrenceOnOrAfter(rule, addDaysTo(date, 1))
+}
+
+/** Último cobro estrictamente anterior a `date`, o null si la regla aún no ha empezado. */
+function previousOccurrence(rule: Schedule, date: string): string | null {
+  let previous: string | null = null
+  for (let n = 0; n < 2000; n += 1) {
+    const candidate = occurrenceDate(rule, n)
+    if (candidate >= date) return previous
+    previous = candidate
+  }
+  return previous
+}
+
+/**
+ * Qué pendiente hay que crear ahora y cuál será el cobro siguiente.
+ * Solo se materializa el cobro más reciente que ya ha llegado: si la regla llevaba meses atrasada,
+ * no se rellenan todos los meses de golpe (la tarea corre cada 10 minutos y si no, los crearía todos).
+ */
+export function materializePlan(
+  rule: Schedule & { dt_next: string; dt_end?: string | null },
+  today: string
+): { due: string | null; next: string; ended: boolean } {
+  const todayDate = asIsoDate(today)
+  const stored = asIsoDate(rule.dt_next)
+  const end = rule.dt_end ? asIsoDate(rule.dt_end) : null
+  const start = asIsoDate(rule.dt_start)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(stored) || !/^\d{4}-\d{2}-\d{2}$/.test(todayDate)) {
+    return { due: null, next: todayDate, ended: false }
+  }
+
+  const alignedStored = firstOccurrenceOnOrAfter(rule, stored)
+  // La regla ya apunta a un cobro real en el futuro: no se crea nada
+  if (alignedStored === stored && stored > todayDate) {
+    return { due: null, next: stored, ended: Boolean(end && stored > end) }
+  }
+
+  const nextAfterToday = firstOccurrenceOnOrAfter(rule, addDaysTo(todayDate, 1))
+  let due = previousOccurrence(rule, nextAfterToday)
+  if (due && (due > todayDate || due < start)) due = null
+  if (due && end && due > end) {
+    const last = previousOccurrence(rule, addDaysTo(end, 1))
+    due = last && last <= end && last <= todayDate && last >= start ? last : null
+  }
+
+  const next = due ? nextOccurrenceAfter(rule, due) : nextAfterToday
+  const safeNext = next > (due || todayDate) ? next : addDaysTo(todayDate, 32)
+  const ended = Boolean(end && (safeNext > end || (due !== null && due > end)))
+  return { due, next: safeNext, ended }
 }
 
 /** Primer cobro de una regla recién configurada: el día elegido del mes de partida (`startMonth`, YYYY-MM). */

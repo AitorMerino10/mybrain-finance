@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Prefs = {
   dailyReminder: boolean
@@ -73,6 +73,9 @@ export default function NotificationsSettings() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
   const [isIos, setIsIos] = useState(false)
+  const prefsRef = useRef<Prefs | null>(null)
+  const saveSeq = useRef(0)
+  prefsRef.current = prefs
 
   const refreshStatus = useCallback(async () => {
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent)
@@ -179,10 +182,29 @@ export default function NotificationsSettings() {
   }
 
   const updatePrefs = (patch: Partial<Prefs>) => {
-    if (!prefs) return
-    const next = { ...prefs, ...patch }
+    const current = prefsRef.current
+    if (!current) return
+    const next = { ...current, ...patch }
+    prefsRef.current = next
     setPrefs(next)
-    fetch('/api/push/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefs: next }) }).catch(() => undefined)
+    const seq = ++saveSeq.current
+    void (async () => {
+      try {
+        const response = await fetch('/api/push/prefs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prefs: next }),
+        })
+        const json = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(json.error || 'No se pudieron guardar los avisos')
+        if (saveSeq.current === seq) setMessage(null)
+      } catch (error) {
+        if (saveSeq.current !== seq) return
+        prefsRef.current = current
+        setPrefs(current)
+        setMessage({ type: 'error', text: error instanceof Error ? error.message : 'No se pudieron guardar los avisos. Siguen como estaban.' })
+      }
+    })()
   }
 
   return (
@@ -245,14 +267,14 @@ export default function NotificationsSettings() {
             label="Recordatorio diario de gastos"
             checked={prefs.dailyReminder}
             onChange={(value) => updatePrefs({ dailyReminder: value })}
-            hint="Todos los días, para que metas los gastos de hoy."
+            hint="Una vez al día, a la hora que elijas, para que metas los gastos de hoy."
           />
           {prefs.dailyReminder && <HourSelect label="Enviar a las" value={prefs.dailyHour} onChange={(hour) => updatePrefs({ dailyHour: hour })} />}
           <Toggle
             label="Gastos pendientes sin completar"
             checked={prefs.pendingAlerts}
             onChange={(value) => updatePrefs({ pendingAlerts: value })}
-            hint="Todos los días, solo si tienes gastos pendientes (pagos con el móvil o recurrentes) sin completar."
+            hint="Una vez al día, solo si tienes gastos pendientes (pagos con el móvil o recurrentes) sin completar."
           />
           {prefs.pendingAlerts && <HourSelect label="Enviar a las" value={prefs.pendingHour} onChange={(hour) => updatePrefs({ pendingHour: hour })} />}
           <Toggle
